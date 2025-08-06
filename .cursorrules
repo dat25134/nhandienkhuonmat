@@ -1,0 +1,13 @@
+# Quy định làm việc cho dự án nhận dạng khuôn mặt
+
+## Quy định chung
+1. **Chỉ thực hiện khi có xác nhận** - Không tự ý làm theo ý mình, luôn hỏi ý kiến trước khi thực hiện bất kỳ thay đổi nào
+2. **Python 3.11.9** - Đảm bảo tất cả code và dependencies tương thích với phiên bản này
+3. **Không chạy lệnh nền trên terminal** - Chỉ tư vấn cách chạy, người dùng sẽ tự thực hiện và gửi kết quả để đưa ra hướng giải quyết khi có lỗi
+4. **Không tạo file hướng dẫn** - Chỉ tạo khi hoàn thành dự án hoặc được yêu cầu cụ thể
+5. **Không tạo file git** - Người dùng sẽ tự quản lý git
+
+## Cách áp dụng
+- Tuân thủ nghiêm ngặt các quy định trên
+- Luôn hỏi ý kiến trước khi thực hiện thay đổi
+- Các quy định này áp dụng cho tất cả các yêu cầu trong dự án 

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training - Hệ thống nhận dạng khuôn mặt</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Training nhận dạng khuôn mặt</h1>
+            <nav>
+                <a href="/">Trang chủ</a>
+                <a href="/training" class="active">Training</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="training-section">
+                <h2>Thêm người dùng mới</h2>
+                
+                <div class="form-group">
+                    <label for="userName">Tên người dùng:</label>
+                    <input type="text" id="userName" placeholder="Nhập tên người dùng" required>
+                </div>
+
+                <div class="camera-controls">
+                    <select id="cameraSelect" class="camera-select">
+                        <option value="">Chọn camera...</option>
+                    </select>
+                    <button id="startCamera" class="btn btn-primary">Bật camera</button>
+                    <button id="stopCamera" class="btn btn-secondary" disabled>Tắt camera</button>
+                </div>
+                
+                <div class="video-container">
+                    <video id="video" autoplay muted playsinline></video>
+                    <canvas id="canvas" style="display: none;"></canvas>
+                </div>
+
+                <div class="training-controls">
+                    <button id="captureFace" class="btn btn-success" disabled>Chụp khuôn mặt</button>
+                    <button id="saveUser" class="btn btn-primary" disabled>Lưu người dùng</button>
+                </div>
+
+                <div id="trainingResult" class="result-container" style="display: none;">
+                    <h3>Kết quả training</h3>
+                    <div id="trainingContent"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/training.js') }}"></script>
+</body>
+</html> 

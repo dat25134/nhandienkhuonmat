@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống nhận dạng khuôn mặt</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👤</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Hệ thống nhận dạng khuôn mặt</h1>
+            <nav>
+                <a href="/" class="active">Trang chủ</a>
+                <a href="/training">Training</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="camera-section">
+                <h2>Camera</h2>
+                <div class="camera-controls">
+                    <select id="cameraSelect" class="camera-select">
+                        <option value="">Chọn camera...</option>
+                    </select>
+                    <button id="startCamera" class="btn btn-primary">Bật camera</button>
+                    <button id="stopCamera" class="btn btn-secondary" disabled>Tắt camera</button>
+                </div>
+                
+                <div class="video-container">
+                    <video id="video" autoplay muted playsinline></video>
+                    <canvas id="canvas" style="display: none;"></canvas>
+                </div>
+            </div>
+
+            <div class="recognition-section">
+                <h2>Nhận dạng khuôn mặt</h2>
+                <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>
+                
+                <div id="recognitionResult" class="result-container" style="display: none;">
+                    <h3>Kết quả nhận dạng</h3>
+                    <div id="resultContent"></div>
+                </div>
+            </div>
+
+            <div class="users-section">
+                <h2>Danh sách người dùng</h2>
+                <div id="usersList" class="users-list">
+                    <p>Đang tải...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Polyfill cho MediaDevices API -->
+    <script>
+        // Polyfill cho MediaDevices API
+        if (!navigator.mediaDevices) {
+            navigator.mediaDevices = {};
+        }
+
+        if (!navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia = function(constraints) {
+                const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.getUserMedia;
+
+                if (!getUserMedia) {
+                    return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
+                }
+
+                return new Promise(function(resolve, reject) {
+                    getUserMedia.call(navigator, constraints, resolve, reject);
+                });
+            }
+        }
+
+        if (!navigator.mediaDevices.enumerateDevices) {
+            navigator.mediaDevices.enumerateDevices = function() {
+                return Promise.resolve([]);
+            }
+        }
+    </script>
+
+    <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html> 
