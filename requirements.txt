@@ -19,3 +19,6 @@ pydantic==2.8.2
 python-multipart==0.0.9
 SQLAlchemy==2.0.34
 aiosqlite==0.20.0
+
+# Datasets for testing (LFW)
+scikit-learn==1.5.1
