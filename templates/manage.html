@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý khách</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Quản lý khách</h1>
+            <nav>
+                <a href="/">Check-in</a>
+                <a href="/training">Training</a>
+                <a href="/checkins">Check-ins</a>
+                <a href="/manage" class="active">Quản lý</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="users-section">
+                <h2>Danh sách khách</h2>
+                <div style="display:flex; gap:10px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <input id="searchUser" type="text" placeholder="Tìm theo tên/điện thoại/công ty" style="flex:1; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                    <button id="rebuildCache" class="btn btn-secondary">Làm mới cache nhận diện</button>
+                </div>
+                <div id="userList" class="users-list"></div>
+            </div>
+
+            <div class="training-section">
+                <h2>Chỉnh sửa hồ sơ</h2>
+                <div id="editPanel" style="display:none;">
+                    <div class="form-group">
+                        <label>Họ tên</label>
+                        <input id="editName" type="text" placeholder="Tên">
+                    </div>
+                    <div class="form-group" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
+                        <input id="editPhone" type="text" placeholder="Số điện thoại">
+                        <select id="editGender" class="camera-select">
+                            <option value="">Giới tính</option>
+                            <option value="Nam">Nam</option>
+                            <option value="Nữ">Nữ</option>
+                            <option value="Khác">Khác</option>
+                        </select>
+                        <input id="editCompany" type="text" placeholder="Công ty">
+                        <input id="editDepartment" type="text" placeholder="Bộ phận">
+                        <input id="editPosition" type="text" placeholder="Vị trí">
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0;">
+                        <button id="saveProfile" class="btn btn-primary">Lưu hồ sơ</button>
+                        <button id="deleteUser" class="btn btn-secondary">Xóa khách</button>
+                    </div>
+
+                    <h3>Ảnh training</h3>
+                    <div id="imageGrid" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;"></div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <input id="addImages" type="file" accept="image/*" multiple>
+                        <button id="uploadImagesBtn" class="btn btn-success">Thêm ảnh</button>
+                        <button id="removeSelectedBtn" class="btn btn-secondary">Xóa ảnh đã chọn</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/manage.js') }}"></script>
+</body>
+</html>
+
+

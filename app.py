@@ -13,6 +13,7 @@ from gtts import gTTS
 import tempfile
 from werkzeug.utils import secure_filename
 from pathlib import Path
+from flask import send_from_directory, abort
 
 app = Flask(__name__)
 
@@ -29,6 +30,24 @@ USERS_JSON_PATH = Path('data/db/users.json')
 _users_lock = threading.Lock()
 CHECKINS_JSON_PATH = Path('data/db/checkins.json')
 _checkins_lock = threading.Lock()
+
+# Serve media files under data/images via /media/<path>
+@app.route('/media/<path:relpath>')
+def serve_media(relpath):
+    # Only allow serving files inside data/images
+    safe_root = Path('data/images').resolve()
+    full_path = Path(relpath).resolve()
+    try:
+        # If relpath is absolute or doesn't start with data/images, prepend
+        if not str(full_path).startswith(str(safe_root)):
+            full_path = (Path('.') / relpath).resolve()
+        if not str(full_path).startswith(str(safe_root)):
+            return abort(404)
+        if not full_path.exists() or not full_path.is_file():
+            return abort(404)
+        return send_file(str(full_path))
+    except Exception:
+        return abort(404)
 
 def _ensure_users_json():
     if not USERS_JSON_PATH.exists():
@@ -156,6 +175,10 @@ def training():
 @app.route('/checkins')
 def checkins_page():
     return render_template('checkins.html')
+
+@app.route('/manage')
+def manage_page():
+    return render_template('manage.html')
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
@@ -403,6 +426,15 @@ def save_image_file(user_id, file_storage):
     except Exception as e:
         print(f'Lỗi lưu ảnh: {e}')
         return None
+
+def delete_image_file(path: str) -> bool:
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+        return True
+    except Exception as e:
+        print(f'Lỗi xóa ảnh: {e}')
+        return False
 
 def decode_dataurl_to_bytes(data_url):
     try:
@@ -770,6 +802,78 @@ def update_profile(user_id):
             return jsonify({'error': 'User not found'}), 404
         save_users_json(users)
     return jsonify({'status': 'ok'})
+
+@app.route('/api/users/<int:user_id>/images', methods=['POST'])
+def add_images_to_user(user_id):
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'Vui lòng upload 1-5 ảnh'}), 400
+    saved = []
+    for file in files[:5]:
+        p = save_image_file(user_id, file)
+        if p:
+            saved.append(p)
+    if not saved:
+        return jsonify({'error': 'Không lưu được ảnh'}), 400
+    with _users_lock:
+        data = load_users_json()
+        found = False
+        for u in data.get('users', []):
+            if u.get('id') == user_id:
+                u.setdefault('images', [])
+                u['images'].extend(saved)
+                found = True
+                break
+        if not found:
+            return jsonify({'error': 'User not found'}), 404
+        save_users_json(data)
+    # Refresh cache for this user
+    add_user_encodings_to_cache(user_id, next((u.get('name') for u in data.get('users', []) if u.get('id')==user_id), ''), saved)
+    return jsonify({'saved': len(saved), 'paths': saved})
+
+@app.route('/api/users/<int:user_id>/images', methods=['DELETE'])
+def delete_images_of_user(user_id):
+    payload = request.json or {}
+    paths = payload.get('paths') or []
+    if not isinstance(paths, list) or not paths:
+        return jsonify({'error': 'paths required'}), 400
+    removed = 0
+    for p in paths:
+        if delete_image_file(p):
+            removed += 1
+    with _users_lock:
+        data = load_users_json()
+        for u in data.get('users', []):
+            if u.get('id') == user_id:
+                u['images'] = [x for x in u.get('images', []) if x not in paths]
+                break
+        save_users_json(data)
+    # Rebuild cache fully to drop deleted vectors
+    build_encoding_cache()
+    return jsonify({'removed': removed})
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    with _users_lock:
+        data = load_users_json()
+        users = data.get('users', [])
+        target = None
+        for u in users:
+            if u.get('id') == user_id:
+                target = u
+                break
+        if not target:
+            return jsonify({'error': 'User not found'}), 404
+        # Không xóa thư mục ảnh theo yêu cầu hiện tại, chỉ bỏ liên kết
+        data['users'] = [u for u in users if u.get('id') != user_id]
+        save_users_json(data)
+    build_encoding_cache()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/cache/rebuild', methods=['POST'])
+def rebuild_cache():
+    build_encoding_cache()
+    return jsonify({'status': 'ok', 'users': len(ENCODING_CACHE)})
 
 @app.route('/api/checkin/<int:user_id>', methods=['POST'])
 def checkin_user(user_id):
