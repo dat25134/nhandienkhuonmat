@@ -115,6 +115,37 @@ def create_placeholder_portrait(name: str, size: int = 512) -> Image.Image:
     return img
 
 
+# -------------------- Synthetic profile fields --------------------
+FIRST_NAMES_MALE = ["Anh", "Bảo", "Cường", "Duy", "Hùng", "Khang", "Long", "Minh", "Nam", "Quang"]
+FIRST_NAMES_FEMALE = ["Anh", "Bích", "Chi", "Dung", "Hạnh", "Lan", "Linh", "Mai", "Ngọc", "Thảo"]
+LAST_NAMES = ["Nguyễn", "Trần", "Lê", "Phạm", "Huỳnh", "Hoàng", "Phan", "Vũ", "Võ", "Đặng"]
+COMPANIES = ["Cty Du lịch Biển Xanh", "TravelPlus", "SunSea Group", "VietTrade", "ExpoAsia", "Urban Tour", "Delta Commerce"]
+DEPARTMENTS = ["Kinh doanh", "Marketing", "Vận hành", "Nhân sự", "Tài chính", "CNTT"]
+POSITIONS = ["Nhân viên", "Chuyên viên", "Trưởng phòng", "Phó phòng", "Giám đốc", "Phó giám đốc"]
+
+
+def random_gender() -> str:
+    return random.choice(["Nam", "Nữ", "Khác"]) if random.random() < 0.9 else "Khác"
+
+
+def random_phone() -> str:
+    prefix = random.choice(["03", "05", "07", "08", "09"])  # VN mobile prefixes
+    rest = ''.join(str(random.randint(0, 9)) for _ in range(8))
+    return prefix + rest
+
+
+def random_company() -> str:
+    return random.choice(COMPANIES)
+
+
+def random_department() -> str:
+    return random.choice(DEPARTMENTS)
+
+
+def random_position() -> str:
+    return random.choice(POSITIONS)
+
+
 def collect_source_images(src_dir: Path) -> list[Path]:
     if not src_dir or not src_dir.exists():
         return []
@@ -183,7 +214,15 @@ def main():
     created = 0
     for i in range(args.num_users):
         user_id = next_id + i
-        name = f"Test User {user_id:03d}"
+        g = random_gender()
+        if g == "Nam":
+            fname = random.choice(FIRST_NAMES_MALE)
+        elif g == "Nữ":
+            fname = random.choice(FIRST_NAMES_FEMALE)
+        else:
+            fname = random.choice(FIRST_NAMES_MALE + FIRST_NAMES_FEMALE)
+        lname = random.choice(LAST_NAMES)
+        name = f"{lname} {fname}"
         num_images = random.randint(args.min_images, args.max_images)
         image_paths = []
 
@@ -208,6 +247,11 @@ def main():
             "name": name,
             "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "images": image_paths,
+            "phone": random_phone(),
+            "gender": g,
+            "company": random_company(),
+            "department": random_department(),
+            "position": random_position(),
         })
         created += 1
 
