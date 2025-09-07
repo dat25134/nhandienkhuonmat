@@ -327,15 +327,25 @@ def preprocess_image(image_array):
 
 # ------------------ Encoding cache ------------------
 ENCODING_CACHE = []  # list of dicts: { 'id': int, 'name': str, 'encodings': [np.ndarray] }
+CENTROID_CACHE = []  # list of dicts: { 'id': int, 'name': str, 'gender': str, 'centroid': np.ndarray, 'count': int }
+
+# Strict recognition policy
+STRICT_TOLERANCE = 0.53
+TOP2_GAP_MIN = 0.07
+BLUR_MIN_ENROLL = 80.0   # discard enrollment images blurrier than this
+BLUR_MIN_QUERY = 60.0    # reject very blurry queries
 
 def build_encoding_cache():
     global ENCODING_CACHE
+    global CENTROID_CACHE
     ENCODING_CACHE = []
+    CENTROID_CACHE = []
     try:
         users = load_users_json().get('users', [])
         for u in users:
             uid = u.get('id')
             name = u.get('name')
+            gender = u.get('gender', '')
             paths = u.get('images', [])
             encs = []
             for p in paths:
@@ -345,6 +355,9 @@ def build_encoding_cache():
                         if img.mode != 'RGB':
                             img = img.convert('RGB')
                         arr = np.array(img)
+                        # Blur quality filter for enrollment
+                        if compute_blur_score(arr) < BLUR_MIN_ENROLL:
+                            continue
                         e = get_face_encoding(arr)
                         if e is not None:
                             encs.append(e)
@@ -353,9 +366,11 @@ def build_encoding_cache():
                     continue
             if encs:
                 ENCODING_CACHE.append({'id': uid, 'name': name, 'encodings': encs})
+                centroid = np.mean(np.vstack(encs), axis=0)
+                CENTROID_CACHE.append({'id': uid, 'name': name, 'gender': gender, 'centroid': centroid, 'count': len(encs)})
     except Exception as e:
         print(f'Lỗi build cache: {e}')
-    print(f'Cache encodings sẵn sàng: {sum(len(x.get("encodings", [])) for x in ENCODING_CACHE)} vectors, {len(ENCODING_CACHE)} người dùng')
+    print(f'Cache encodings: {sum(len(x.get("encodings", [])) for x in ENCODING_CACHE)} vectors; centroids: {len(CENTROID_CACHE)} users')
 
 def add_user_encodings_to_cache(user_id, name, image_paths):
     try:
@@ -367,6 +382,8 @@ def add_user_encodings_to_cache(user_id, name, image_paths):
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
                     arr = np.array(img)
+                    if compute_blur_score(arr) < BLUR_MIN_ENROLL:
+                        continue
                     e = get_face_encoding(arr)
                     if e is not None:
                         encs.append(e)
@@ -375,6 +392,20 @@ def add_user_encodings_to_cache(user_id, name, image_paths):
                 continue
         if encs:
             ENCODING_CACHE.append({'id': user_id, 'name': name, 'encodings': encs})
+            centroid = np.mean(np.vstack(encs), axis=0)
+            # append or replace centroid for this user
+            global CENTROID_CACHE
+            CENTROID_CACHE = [c for c in CENTROID_CACHE if c.get('id') != user_id]
+            # find gender from users.json
+            ugender = ''
+            try:
+                for u in load_users_json().get('users', []):
+                    if u.get('id') == user_id:
+                        ugender = u.get('gender', '')
+                        break
+            except Exception:
+                pass
+            CENTROID_CACHE.append({'id': user_id, 'name': name, 'gender': ugender, 'centroid': centroid, 'count': len(encs)})
     except Exception as e:
         print(f'Lỗi add cache: {e}')
 
@@ -399,6 +430,32 @@ def find_best_match(query_encoding, tolerance=0.65):
     if best_distance <= tolerance:
         return best_name, best_distance
     return None, best_distance
+
+def compute_blur_score(image_array):
+    try:
+        gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+        return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    except Exception:
+        return 0.0
+
+def match_centroid_strict(query_encoding):
+    """Return (accepted:boolean, user_id, name, gender, d1, d2) with strict threshold+gap on centroids"""
+    if not CENTROID_CACHE:
+        return False, None, None, None, None, None
+    # build matrix
+    centroids = np.vstack([c['centroid'] for c in CENTROID_CACHE]).astype(np.float64)
+    dists = face_recognition.face_distance(centroids, query_encoding)
+    order = np.argsort(dists)
+    if len(order) == 0:
+        return False, None, None, None, None, None
+    i1 = int(order[0])
+    d1 = float(dists[i1])
+    d2 = float(dists[int(order[1])]) if len(order) > 1 else 1e9
+    cand = CENTROID_CACHE[i1]
+    accept = (d1 <= STRICT_TOLERANCE) and ((d2 - d1) >= TOP2_GAP_MIN)
+    if not accept:
+        return False, None, None, None, d1, d2
+    return True, cand['id'], cand['name'], cand.get('gender', ''), d1, d2
 
 def average_encodings(encodings_list):
     try:
@@ -657,24 +714,19 @@ def recognize_face():
                 'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
             }), 400
         
-        # So khớp bằng khoảng cách tốt nhất
-        name, dist = find_best_match(current_face_encoding, tolerance=0.65)
-        if name is not None:
-            # Tìm user theo name để lấy id và giới tính
-            uid = None
-            ugender = ''
-            users = load_users_json().get('users', [])
-            for u in users:
-                if u.get('name') == name:
-                    uid = u.get('id')
-                    ugender = u.get('gender', '')
-                    break
+        # Lọc chất lượng query
+        if compute_blur_score(image_array) < BLUR_MIN_QUERY:
+            return jsonify({'recognized': False, 'message': 'Ảnh quá mờ, vui lòng chụp lại với ánh sáng tốt hơn'}), 400
+
+        # So khớp nghiêm ngặt theo centroid + gap
+        accepted, uid, uname, ugender, d1, d2 = match_centroid_strict(current_face_encoding)
+        if accepted:
             return jsonify({
                 'recognized': True,
                 'user_id': uid,
-                'name': name,
-                'message': build_greeting(name, ugender),
-                'distance': dist
+                'name': uname,
+                'message': build_greeting(uname, ugender),
+                'distance': d1
             })
         
         return jsonify({
@@ -702,6 +754,9 @@ def recognize_face_multi():
 
     try:
         encodings = []
+        found = False
+        best_name = None
+        d1 = None
         for img_b64 in images_data[:5]:
             image_array = decode_image(img_b64)
             if image_array is None:
@@ -723,10 +778,10 @@ def recognize_face_multi():
                 'message': 'Lỗi xử lý dữ liệu khuôn mặt'
             }), 500
 
-        # So khớp bằng khoảng cách tốt nhất
-        name, dist = find_best_match(fused, tolerance=0.65)
-        if name is not None:
-            best_name = name
+        # So khớp nghiêm ngặt theo centroid + gap
+        accepted, uid, uname, ugender, d1, d2 = match_centroid_strict(fused)
+        if accepted:
+            best_name = uname
             found = True
 
         if found:
@@ -744,7 +799,7 @@ def recognize_face_multi():
                 'user_id': uid,
                 'name': best_name,
                 'message': build_greeting(best_name, ugender),
-                'distance': dist
+                'distance': d1
             })
 
         return jsonify({

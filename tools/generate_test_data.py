@@ -215,14 +215,8 @@ def main():
     for i in range(args.num_users):
         user_id = next_id + i
         g = random_gender()
-        if g == "Nam":
-            fname = random.choice(FIRST_NAMES_MALE)
-        elif g == "Nữ":
-            fname = random.choice(FIRST_NAMES_FEMALE)
-        else:
-            fname = random.choice(FIRST_NAMES_MALE + FIRST_NAMES_FEMALE)
-        lname = random.choice(LAST_NAMES)
-        name = f"{lname} {fname}"
+        # Đặt tên chuẩn theo yêu cầu để tránh nhầm lẫn
+        name = f"Khách {user_id}"
         num_images = random.randint(args.min_images, args.max_images)
         image_paths = []
 
