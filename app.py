@@ -33,11 +33,40 @@ def _ensure_users_json():
         USERS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
         with USERS_JSON_PATH.open('w', encoding='utf-8') as f:
             json.dump({"users": []}, f, ensure_ascii=False, indent=2)
+    else:
+        # Nếu file rỗng, ghi cấu trúc mặc định
+        try:
+            if USERS_JSON_PATH.stat().st_size == 0:
+                with USERS_JSON_PATH.open('w', encoding='utf-8') as f:
+                    json.dump({"users": []}, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
 def load_users_json():
     _ensure_users_json()
-    with USERS_JSON_PATH.open('r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        text = USERS_JSON_PATH.read_text(encoding='utf-8')
+        if not text.strip():
+            return {"users": []}
+        data = json.loads(text)
+        if not isinstance(data, dict) or 'users' not in data or not isinstance(data['users'], list):
+            return {"users": []}
+        return data
+    except json.JSONDecodeError:
+        # Thử khôi phục từ bản sao lưu
+        backup_path = USERS_JSON_PATH.with_suffix('.json.bak')
+        try:
+            if backup_path.exists():
+                text = backup_path.read_text(encoding='utf-8')
+                data = json.loads(text)
+                # Ghi phục hồi
+                USERS_JSON_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+                return data
+        except Exception:
+            pass
+        # Trả về mặc định nếu không thể khôi phục
+        USERS_JSON_PATH.write_text(json.dumps({"users": []}, ensure_ascii=False, indent=2), encoding='utf-8')
+        return {"users": []}
 
 def save_users_json(data):
     _ensure_users_json()
