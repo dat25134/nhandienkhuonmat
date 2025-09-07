@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danh sách Check-in</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Danh sách Check-in</h1>
+            <nav>
+                <a href="/">Trang chủ</a>
+                <a href="/training">Training</a>
+                <a href="/checkins" class="active">Check-ins</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="users-section">
+                <h2>Khách đã check-in (mỗi khách chỉ 1 lần mới nhất)</h2>
+                <div style="display:flex; gap:10px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <input id="search" type="text" placeholder="Tìm theo tên/điện thoại/công ty" style="flex:1; padding: 10px; border:2px solid #e0e0e0; border-radius:8px;">
+                    <select id="genderFilter" class="camera-select" style="min-width:150px;">
+                        <option value="">Giới tính (Tất cả)</option>
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                    </select>
+                </div>
+                <div id="tableWrap" class="users-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        async function loadCheckins() {
+            const res = await fetch('/api/checkins');
+            return await res.json();
+        }
+
+        function render(list) {
+            const wrap = document.getElementById('tableWrap');
+            if (!list || list.length === 0) {
+                wrap.innerHTML = '<p>Chưa có ai check-in</p>';
+                return;
+            }
+            const rows = list.map(c => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <h4>${c.name || '(Không tên)'} — ${c.phone || ''}</h4>
+                        <p>${c.company || ''} ${c.department ? ('- ' + c.department) : ''} ${c.position ? ('- ' + c.position) : ''}</p>
+                    </div>
+                    <div>${new Date(c.checked_at).toLocaleString('vi-VN')}</div>
+                </div>
+            `).join('');
+            wrap.innerHTML = rows;
+        }
+
+        function applyFilters(all) {
+            const kw = document.getElementById('search').value.toLowerCase();
+            const g = document.getElementById('genderFilter').value;
+            return all.filter(c => {
+                if (g && (c.gender || '') !== g) return false;
+                const hay = `${c.name||''} ${c.phone||''} ${c.company||''}`.toLowerCase();
+                if (kw && !hay.includes(kw)) return false;
+                return true;
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const all = await loadCheckins();
+            const search = document.getElementById('search');
+            const gender = document.getElementById('genderFilter');
+            const update = () => render(applyFilters(all));
+            search.addEventListener('input', update);
+            gender.addEventListener('change', update);
+            update();
+        });
+    </script>
+</body>
+</html>
+
+

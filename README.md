@@ -281,3 +281,6 @@ Nếu gặp vấn đề, vui lòng:
 ---
 
 **Lưu ý**: Đây là dự án demo, không nên sử dụng trong môi trường production mà không có các biện pháp bảo mật bổ sung. 
+
+Testing:
+python tools/generate_test_data.py --num_users 600 --min_images 3 --max_images 5 --src_dir <thu_muc_chua_hinh_anh>

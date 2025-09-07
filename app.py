@@ -27,6 +27,8 @@ os.makedirs('data/db', exist_ok=True)
 
 USERS_JSON_PATH = Path('data/db/users.json')
 _users_lock = threading.Lock()
+CHECKINS_JSON_PATH = Path('data/db/checkins.json')
+_checkins_lock = threading.Lock()
 
 def _ensure_users_json():
     if not USERS_JSON_PATH.exists():
@@ -77,11 +79,67 @@ def save_users_json(data):
     with USERS_JSON_PATH.open('w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def load_checkins_json():
+    CHECKINS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not CHECKINS_JSON_PATH.exists() or CHECKINS_JSON_PATH.stat().st_size == 0:
+        CHECKINS_JSON_PATH.write_text(json.dumps({"checkins": []}, ensure_ascii=False, indent=2), encoding='utf-8')
+    try:
+        text = CHECKINS_JSON_PATH.read_text(encoding='utf-8')
+        if not text.strip():
+            return {"checkins": []}
+        data = json.loads(text)
+        if not isinstance(data, dict) or 'checkins' not in data or not isinstance(data['checkins'], list):
+            return {"checkins": []}
+        return data
+    except json.JSONDecodeError:
+        backup = CHECKINS_JSON_PATH.with_suffix('.json.bak')
+        if backup.exists():
+            text = backup.read_text(encoding='utf-8')
+            data = json.loads(text)
+            CHECKINS_JSON_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+            return data
+        CHECKINS_JSON_PATH.write_text(json.dumps({"checkins": []}, ensure_ascii=False, indent=2), encoding='utf-8')
+        return {"checkins": []}
+
+def save_checkins_json(data):
+    backup = CHECKINS_JSON_PATH.with_suffix('.json.bak')
+    if CHECKINS_JSON_PATH.exists():
+        backup.write_text(CHECKINS_JSON_PATH.read_text(encoding='utf-8'), encoding='utf-8')
+    CHECKINS_JSON_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
 def next_user_id(data):
     users = data.get('users', [])
     if not users:
         return 1
     return int(max(u.get('id', 0) for u in users) + 1)
+
+def sanitize_text(value: str, max_len: int = 150) -> str:
+    try:
+        value = (value or '').strip()
+        if len(value) > max_len:
+            value = value[:max_len]
+        return value
+    except Exception:
+        return ''
+
+def normalize_phone(phone: str) -> str:
+    digits = ''.join([c for c in (phone or '') if c.isdigit()])
+    if len(digits) > 15:
+        digits = digits[:15]
+    return digits
+
+def build_greeting(name: str, gender: str | None) -> str:
+    g = (gender or '').strip().lower()
+    if g == 'nam':
+        title = 'ông'
+    elif g == 'nữ' or g == 'nu':
+        title = 'Bà'
+    else:
+        title = 'Quý khách'
+    # Giữ nguyên chữ hoa đầu câu
+    if title == 'ông':
+        title = 'Ông'
+    return f'Chào mừng {title} {name} đã đến với hệ thống của chúng tôi'
 
 def init_db():
     # JSON-based storage; ensure file exists
@@ -95,6 +153,9 @@ def index():
 @app.route('/training')
 def training():
     return render_template('training.html')
+@app.route('/checkins')
+def checkins_page():
+    return render_template('checkins.html')
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
@@ -104,16 +165,34 @@ def get_users():
         {
             'id': u.get('id'),
             'name': u.get('name'),
-            'created_at': u.get('created_at')
+            'created_at': u.get('created_at'),
+            'phone': u.get('phone', ''),
+            'gender': u.get('gender', ''),
+            'company': u.get('company', ''),
+            'department': u.get('department', ''),
+            'position': u.get('position', '')
         }
         for u in users
     ])
+
+@app.route('/api/users/<int:user_id>', methods=['GET'])
+def get_user_by_id(user_id):
+    data = load_users_json()
+    for u in data.get('users', []):
+        if u.get('id') == user_id:
+            return jsonify(u)
+    return jsonify({'error': 'User not found'}), 404
 
 @app.route('/api/users', methods=['POST'])
 def add_user():
     data = request.json
     name = data.get('name')
     image_data = data.get('face_encoding')
+    phone = normalize_phone(data.get('phone', ''))
+    gender = sanitize_text(data.get('gender', ''))
+    company = sanitize_text(data.get('company', ''))
+    department = sanitize_text(data.get('department', ''))
+    position = sanitize_text(data.get('position', ''))
     
     if not name:
         return jsonify({'error': 'Tên không được để trống'}), 400
@@ -146,7 +225,12 @@ def add_user():
                 'id': user_id,
                 'name': name,
                 'created_at': datetime.utcnow().isoformat() + 'Z',
-                'images': [save_path]
+                'images': [save_path],
+                'phone': phone,
+                'gender': gender,
+                'company': company,
+                'department': department,
+                'position': position
             })
             users_data['users'] = users
             save_users_json(users_data)
@@ -334,6 +418,11 @@ def add_user_multi():
     data = request.json
     name = data.get('name')
     images_data = data.get('images') or []
+    phone = normalize_phone(data.get('phone', ''))
+    gender = sanitize_text(data.get('gender', ''))
+    company = sanitize_text(data.get('company', ''))
+    department = sanitize_text(data.get('department', ''))
+    position = sanitize_text(data.get('position', ''))
 
     if not name:
         return jsonify({'error': 'Tên không được để trống'}), 400
@@ -371,7 +460,12 @@ def add_user_multi():
                 'id': user_id,
                 'name': name,
                 'created_at': datetime.utcnow().isoformat() + 'Z',
-                'images': saved_paths
+                'images': saved_paths,
+                'phone': phone,
+                'gender': gender,
+                'company': company,
+                'department': department,
+                'position': position
             })
             users_data['users'] = users
             save_users_json(users_data)
@@ -388,6 +482,11 @@ def add_user_multi():
 @app.route('/api/users/upload', methods=['POST'])
 def add_user_upload():
     name = request.form.get('name')
+    phone = normalize_phone(request.form.get('phone', ''))
+    gender = sanitize_text(request.form.get('gender', ''))
+    company = sanitize_text(request.form.get('company', ''))
+    department = sanitize_text(request.form.get('department', ''))
+    position = sanitize_text(request.form.get('position', ''))
     files = request.files.getlist('files')
 
     if not name:
@@ -417,7 +516,12 @@ def add_user_upload():
                 'id': user_id,
                 'name': name,
                 'created_at': datetime.utcnow().isoformat() + 'Z',
-                'images': saved_paths
+                'images': saved_paths,
+                'phone': phone,
+                'gender': gender,
+                'company': company,
+                'department': department,
+                'position': position
             })
             users_data['users'] = users
             save_users_json(users_data)
@@ -472,7 +576,17 @@ def recognize_upload():
                     stored_encoding = np.frombuffer(base64.b64decode(stored_encoding_str), dtype=np.float64)
                     matches = face_recognition.compare_faces([stored_encoding], fused, tolerance=0.6)
                     if matches[0]:
-                        return jsonify({'recognized': True, 'name': name, 'message': f'Chào mừng ông {name} đã đến với hệ thống của chúng tôi', 'images_used': used})
+                        # Greeting theo giới tính đã lưu
+                        ugender = ''
+                        try:
+                            users_json = load_users_json().get('users', [])
+                            for uu in users_json:
+                                if uu.get('name') == name:
+                                    ugender = uu.get('gender', '')
+                                    break
+                        except Exception:
+                            pass
+                        return jsonify({'recognized': True, 'name': name, 'message': build_greeting(name, ugender), 'images_used': used})
                 except Exception as e:
                     print(f'Lỗi so sánh khuôn mặt (upload): {e}')
                     continue
@@ -514,10 +628,20 @@ def recognize_face():
         # So khớp bằng khoảng cách tốt nhất
         name, dist = find_best_match(current_face_encoding, tolerance=0.65)
         if name is not None:
+            # Tìm user theo name để lấy id và giới tính
+            uid = None
+            ugender = ''
+            users = load_users_json().get('users', [])
+            for u in users:
+                if u.get('name') == name:
+                    uid = u.get('id')
+                    ugender = u.get('gender', '')
+                    break
             return jsonify({
                 'recognized': True,
+                'user_id': uid,
                 'name': name,
-                'message': f'Chào mừng ông {name} đã đến với hệ thống của chúng tôi',
+                'message': build_greeting(name, ugender),
                 'distance': dist
             })
         
@@ -574,10 +698,21 @@ def recognize_face_multi():
             found = True
 
         if found:
+            # Lấy user_id và giới tính
+            uid = None
+            ugender = ''
+            users = load_users_json().get('users', [])
+            for u in users:
+                if u.get('name') == best_name:
+                    uid = u.get('id')
+                    ugender = u.get('gender', '')
+                    break
             return jsonify({
                 'recognized': True,
+                'user_id': uid,
                 'name': best_name,
-                'message': f'Chào mừng ông {best_name} đã đến với hệ thống của chúng tôi'
+                'message': build_greeting(best_name, ugender),
+                'distance': dist
             })
 
         return jsonify({
@@ -614,6 +749,57 @@ def text_to_speech():
     except Exception as e:
         print(f"Lỗi TTS: {e}")
         return jsonify({'error': 'Lỗi chuyển đổi text thành speech'}), 500
+
+@app.route('/api/users/<int:user_id>/profile', methods=['PUT'])
+def update_profile(user_id):
+    data = request.json or {}
+    allowed = ['phone', 'gender', 'company', 'department', 'position']
+    update_fields = {k: sanitize_text(v if k != 'phone' else normalize_phone(v)) for k, v in data.items() if k in allowed}
+    if not update_fields:
+        return jsonify({'error': 'No fields to update'}), 400
+    with _users_lock:
+        users = load_users_json()
+        changed = False
+        for u in users.get('users', []):
+            if u.get('id') == user_id:
+                for k, v in update_fields.items():
+                    u[k] = v
+                changed = True
+                break
+        if not changed:
+            return jsonify({'error': 'User not found'}), 404
+        save_users_json(users)
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/checkin/<int:user_id>', methods=['POST'])
+def checkin_user(user_id):
+    # Ghi đè lần check-in mới nhất của user
+    payload = request.json or {}
+    now_iso = datetime.utcnow().isoformat() + 'Z'
+    with _checkins_lock:
+        data = load_checkins_json()
+        lst = data.get('checkins', [])
+        # Xóa bản cũ nếu có
+        lst = [c for c in lst if c.get('user_id') != user_id]
+        entry = {
+            'user_id': user_id,
+            'name': sanitize_text(payload.get('name', '')),
+            'phone': normalize_phone(payload.get('phone', '')),
+            'gender': sanitize_text(payload.get('gender', '')),
+            'company': sanitize_text(payload.get('company', '')),
+            'department': sanitize_text(payload.get('department', '')),
+            'position': sanitize_text(payload.get('position', '')),
+            'checked_at': now_iso,
+        }
+        lst.append(entry)
+        data['checkins'] = lst
+        save_checkins_json(data)
+    return jsonify({'status': 'ok', 'checked_at': now_iso})
+
+@app.route('/api/checkins', methods=['GET'])
+def get_checkins():
+    data = load_checkins_json()
+    return jsonify(data.get('checkins', []))
 
 if __name__ == '__main__':
     init_db()

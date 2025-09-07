@@ -43,6 +43,21 @@
                 <h2>Nhận dạng khuôn mặt</h2>
                 <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>
                 <!-- Theo yêu cầu: Không upload ảnh ở màn nhận dạng -->
+                <div class="guest-card" id="guestCard" style="display:none; margin-top:15px;">
+                    <div class="guest-card-header">Thông tin khách mời</div>
+                    <div class="guest-card-body">
+                        <div><strong>Tên:</strong> <span id="infoName">-</span></div>
+                        <div><strong>SĐT:</strong> <span id="infoPhone">-</span></div>
+                        <div><strong>Giới tính:</strong> <span id="infoGender">-</span></div>
+                        <div><strong>Công ty:</strong> <span id="infoCompany">-</span></div>
+                        <div><strong>Bộ phận:</strong> <span id="infoDepartment">-</span></div>
+                        <div><strong>Vị trí:</strong> <span id="infoPosition">-</span></div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+                    <button id="checkinBtn" class="btn btn-primary" disabled>Check-in</button>
+                    <a class="btn btn-secondary" href="/checkins" style="text-decoration:none; line-height: 36px;">Xem danh sách check-in</a>
+                </div>
                 
                 <div id="recognitionResult" class="result-container" style="display: none;">
                     <h3>Kết quả nhận dạng</h3>

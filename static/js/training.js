@@ -1,6 +1,11 @@
 class TrainingApp {
     constructor() {
         this.userNameInput = document.getElementById('userName');
+        this.userPhone = document.getElementById('userPhone');
+        this.userGender = document.getElementById('userGender');
+        this.userCompany = document.getElementById('userCompany');
+        this.userDepartment = document.getElementById('userDepartment');
+        this.userPosition = document.getElementById('userPosition');
         this.captureButton = document.getElementById('captureFace');
         this.clearCapturedButton = document.getElementById('clearCaptured');
         this.saveButton = document.getElementById('saveUser');
@@ -104,7 +109,12 @@ class TrainingApp {
                 },
                 body: JSON.stringify({
                     name: this.userNameInput.value.trim(),
-                    images: images
+                    images: images,
+                    phone: (this.userPhone?.value || '').trim(),
+                    gender: (this.userGender?.value || '').trim(),
+                    company: (this.userCompany?.value || '').trim(),
+                    department: (this.userDepartment?.value || '').trim(),
+                    position: (this.userPosition?.value || '').trim()
                 })
             });
             

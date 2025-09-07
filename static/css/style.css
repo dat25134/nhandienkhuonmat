@@ -200,6 +200,26 @@ h2 {
     border-left: 4px solid #3498db;
 }
 
+.guest-card {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    border: 1px solid #e6ecf1;
+}
+.guest-card-header {
+    padding: 12px 16px;
+    font-weight: 600;
+    color: #1b4f72;
+    background: linear-gradient(135deg, #fef9e7 0%, #fdebd0 100%);
+    border-bottom: 1px solid #e6ecf1;
+}
+.guest-card-body {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 16px;
+}
+
 .result-container h3 {
     color: #2c3e50;
     margin-bottom: 15px;

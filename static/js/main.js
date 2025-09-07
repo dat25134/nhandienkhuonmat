@@ -7,6 +7,9 @@ class FaceRecognitionApp {
         this.captureButton = document.getElementById('captureIdentify');
         this.clearButton = document.getElementById('clearIdentify');
         this.capturedImages = [];
+        this.checkinBtn = document.getElementById('checkinBtn');
+        this.recognizedUserId = null;
+        this.recognizedName = '';
         
         this.init();
     }
@@ -23,6 +26,9 @@ class FaceRecognitionApp {
         }
         if (this.clearButton) {
             this.clearButton.addEventListener('click', () => this.clearCaptured());
+        }
+        if (this.checkinBtn) {
+            this.checkinBtn.addEventListener('click', () => this.submitCheckin());
         }
     }
     
@@ -89,11 +95,33 @@ class FaceRecognitionApp {
             if (result.recognized) {
                 this.showRecognitionResult(result);
                 this.playWelcomeMessage(result.message);
+                this.recognizedUserId = result.user_id || null;
+                this.recognizedName = result.name || '';
+                if (this.recognizedUserId) {
+                    // Fetch profile and show card
+                    try {
+                        const r = await fetch(`/api/users/${this.recognizedUserId}`);
+                        const u = await r.json();
+                        const displayName = u.name || result.name || '';
+                        this.recognizedName = displayName;
+                        document.getElementById('infoName').textContent = displayName;
+                        document.getElementById('infoPhone').textContent = u.phone || '';
+                        document.getElementById('infoGender').textContent = u.gender || '';
+                        document.getElementById('infoCompany').textContent = u.company || '';
+                        document.getElementById('infoDepartment').textContent = u.department || '';
+                        document.getElementById('infoPosition').textContent = u.position || '';
+                        const card = document.getElementById('guestCard');
+                        if (card) card.style.display = 'block';
+                    } catch (e) { console.warn('Không tải được profile', e); }
+                    if (this.checkinBtn) this.checkinBtn.disabled = false;
+                }
             } else {
                 this.showRecognitionResult(result);
                 // Thêm debug để kiểm tra
                 console.log('Không nhận diện được, message:', result.message);
                 this.playWelcomeMessage(result.message);
+                this.recognizedUserId = null;
+                if (this.checkinBtn) this.checkinBtn.disabled = true;
             }
             
         } catch (error) {
@@ -102,6 +130,38 @@ class FaceRecognitionApp {
         } finally {
             this.scanButton.disabled = false;
             this.scanButton.textContent = 'Quét khuôn mặt';
+        }
+    }
+
+    async submitCheckin() {
+        if (!this.recognizedUserId) {
+            this.showError('Chưa nhận diện được khách mời');
+            return;
+        }
+        // Dữ liệu check-in lấy từ profile hiển thị (không nhập lại)
+        const phone = document.getElementById('infoPhone')?.textContent || '';
+        const gender = document.getElementById('infoGender')?.textContent || '';
+        const company = document.getElementById('infoCompany')?.textContent || '';
+        const department = document.getElementById('infoDepartment')?.textContent || '';
+        const position = document.getElementById('infoPosition')?.textContent || '';
+
+        try {
+            // Ghi check-in
+            const name = (this.recognizedName || document.getElementById('infoName')?.textContent || '').trim();
+            const res = await fetch(`/api/checkin/${this.recognizedUserId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, phone, gender, company, department, position })
+            });
+            if (res.ok) {
+                this.showRecognitionResult({ recognized: true, name, message: 'Check-in thành công!' });
+                this.checkinBtn.disabled = true;
+            } else {
+                this.showError('Ghi check-in thất bại');
+            }
+        } catch (e) {
+            console.error(e);
+            this.showError('Lỗi kết nối khi check-in');
         }
     }
 
