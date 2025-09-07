@@ -2,11 +2,13 @@ class TrainingApp {
     constructor() {
         this.userNameInput = document.getElementById('userName');
         this.captureButton = document.getElementById('captureFace');
+        this.clearCapturedButton = document.getElementById('clearCaptured');
         this.saveButton = document.getElementById('saveUser');
         this.resultContainer = document.getElementById('trainingResult');
         this.resultContent = document.getElementById('trainingContent');
         
-        this.capturedImage = null;
+        this.capturedImages = [];
+        this.uploadedImages = [];
         
         this.init();
     }
@@ -19,13 +21,20 @@ class TrainingApp {
         this.captureButton.addEventListener('click', () => this.captureFace());
         this.saveButton.addEventListener('click', () => this.saveUser());
         this.userNameInput.addEventListener('input', () => this.validateForm());
+        const uploadInput = document.getElementById('uploadImages');
+        if (uploadInput) {
+            uploadInput.addEventListener('change', (e) => this.handleUpload(e));
+        }
+        if (this.clearCapturedButton) {
+            this.clearCapturedButton.addEventListener('click', () => this.clearCaptured());
+        }
     }
     
     validateForm() {
         const hasName = this.userNameInput.value.trim() !== '';
-        const hasImage = this.capturedImage !== null;
+        const hasAnyImage = (this.capturedImages && this.capturedImages.length > 0) || (this.uploadedImages && this.uploadedImages.length > 0);
         
-        this.saveButton.disabled = !(hasName && hasImage);
+        this.saveButton.disabled = !(hasName && hasAnyImage);
     }
     
     captureFace() {
@@ -35,75 +44,74 @@ class TrainingApp {
         }
         
         try {
-            this.capturedImage = window.cameraManager.captureImage();
-            
-            // Hiển thị ảnh đã chụp
-            this.showCapturedImage(this.capturedImage);
-            
+            const img = window.cameraManager.captureImage();
+            if (this.capturedImages.length >= 5) {
+                this.showError('Bạn đã chụp tối đa 5 ảnh');
+                return;
+            }
+            this.capturedImages.push(img);
+            this.renderCapturedPreview();
             this.validateForm();
-            
-            this.showSuccess('Đã chụp khuôn mặt thành công!');
-            
+            this.showSuccess('Đã chụp khuôn mặt!');
         } catch (error) {
             console.error('Lỗi chụp khuôn mặt:', error);
             this.showError('Lỗi khi chụp khuôn mặt');
         }
     }
     
-    showCapturedImage(imageData) {
-        // Tạo preview ảnh đã chụp
-        const previewDiv = document.createElement('div');
-        previewDiv.style.cssText = `
-            margin: 20px 0;
-            text-align: center;
-        `;
-        
-        const img = document.createElement('img');
-        img.src = imageData;
-        img.style.cssText = `
-            max-width: 200px;
-            max-height: 200px;
-            border-radius: 10px;
-            border: 2px solid #27ae60;
-        `;
-        
-        previewDiv.appendChild(img);
-        
-        // Xóa preview cũ nếu có
-        const oldPreview = document.querySelector('.captured-preview');
-        if (oldPreview) {
-            oldPreview.remove();
-        }
-        
-        previewDiv.className = 'captured-preview';
-        this.captureButton.parentNode.appendChild(previewDiv);
+    renderCapturedPreview() {
+        const old = document.querySelector('.captured-preview');
+        if (old) old.remove();
+        if (!this.capturedImages || this.capturedImages.length === 0) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'captured-preview';
+        wrap.style.cssText = 'margin: 10px 0; display:flex; gap:8px; flex-wrap:wrap;';
+
+        this.capturedImages.forEach(src => {
+            const img = document.createElement('img');
+            img.src = src;
+            img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:6px;border:2px solid #27ae60;';
+            wrap.appendChild(img);
+        });
+
+        this.captureButton.parentNode.appendChild(wrap);
     }
     
     async saveUser() {
-        if (!this.capturedImage || !this.userNameInput.value.trim()) {
-            this.showError('Vui lòng nhập tên và chụp khuôn mặt');
-            return;
+        if ((!(this.capturedImages && this.capturedImages.length > 0)) || !this.userNameInput.value.trim()) {
+            if (!(this.uploadedImages && this.uploadedImages.length > 0) || !this.userNameInput.value.trim()) {
+                this.showError('Vui lòng nhập tên và chụp hoặc upload ít nhất 1 ảnh');
+                return;
+            }
         }
         
         this.saveButton.disabled = true;
         this.saveButton.textContent = 'Đang lưu...';
         
         try {
-            const response = await fetch('/api/users', {
+            const images = [];
+            if (this.capturedImages && this.capturedImages.length > 0) images.push(...this.capturedImages);
+            if (this.uploadedImages && this.uploadedImages.length > 0) {
+                const remain = 5 - images.length;
+                if (remain > 0) images.push(...this.uploadedImages.slice(0, remain));
+            }
+
+            const response = await fetch('/api/users/multi', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     name: this.userNameInput.value.trim(),
-                    face_encoding: this.capturedImage
+                    images: images
                 })
             });
             
             const result = await response.json();
             
             if (response.ok) {
-                this.showTrainingResult('Thêm người dùng thành công!', result.message);
+                this.showTrainingResult('Thêm người dùng thành công!', result.message || '');
                 this.resetForm();
             } else {
                 this.showError(result.error || 'Lỗi khi thêm người dùng');
@@ -138,14 +146,59 @@ class TrainingApp {
     
     resetForm() {
         this.userNameInput.value = '';
-        this.capturedImage = null;
+        this.capturedImages = [];
+        this.uploadedImages = [];
         this.validateForm();
         
-        // Xóa preview ảnh
         const preview = document.querySelector('.captured-preview');
-        if (preview) {
-            preview.remove();
-        }
+        if (preview) preview.remove();
+    }
+
+    clearCaptured() {
+        this.capturedImages = [];
+        const preview = document.querySelector('.captured-preview');
+        if (preview) preview.remove();
+        this.validateForm();
+    }
+
+    async handleUpload(event) {
+        const files = Array.from(event.target.files || []);
+        if (files.length === 0) return;
+        const limited = files.slice(0, 5);
+        const promises = limited.map(file => this.readFileAsDataUrl(file));
+        const results = await Promise.all(promises);
+        this.uploadedImages = results.filter(Boolean);
+        this.renderUploadPreview();
+        this.validateForm();
+    }
+
+    readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    renderUploadPreview() {
+        const old = document.querySelector('.upload-preview');
+        if (old) old.remove();
+
+        if (!this.uploadedImages || this.uploadedImages.length === 0) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'upload-preview';
+        wrap.style.cssText = 'margin: 10px 0; display:flex; gap:8px; flex-wrap:wrap;';
+
+        this.uploadedImages.forEach(src => {
+            const img = document.createElement('img');
+            img.src = src;
+            img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #ddd;';
+            wrap.appendChild(img);
+        });
+
+        this.saveButton.parentNode.appendChild(wrap);
     }
     
     showSuccess(message) {

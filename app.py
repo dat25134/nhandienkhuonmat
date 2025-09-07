@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_file
 import os
-import sqlite3
+import json
+import threading
 import base64
 import numpy as np
 import cv2
@@ -10,6 +11,8 @@ from PIL import Image
 import io
 from gtts import gTTS
 import tempfile
+from werkzeug.utils import secure_filename
+from pathlib import Path
 
 app = Flask(__name__)
 
@@ -19,21 +22,42 @@ os.makedirs('static/js', exist_ok=True)
 os.makedirs('templates', exist_ok=True)
 os.makedirs('models', exist_ok=True)
 os.makedirs('data', exist_ok=True)
+os.makedirs('data/images', exist_ok=True)
+os.makedirs('data/db', exist_ok=True)
 
-# Khởi tạo database
+USERS_JSON_PATH = Path('data/db/users.json')
+_users_lock = threading.Lock()
+
+def _ensure_users_json():
+    if not USERS_JSON_PATH.exists():
+        USERS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with USERS_JSON_PATH.open('w', encoding='utf-8') as f:
+            json.dump({"users": []}, f, ensure_ascii=False, indent=2)
+
+def load_users_json():
+    _ensure_users_json()
+    with USERS_JSON_PATH.open('r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_users_json(data):
+    _ensure_users_json()
+    # backup
+    backup_path = USERS_JSON_PATH.with_suffix('.json.bak')
+    if USERS_JSON_PATH.exists():
+        backup_path.write_text(USERS_JSON_PATH.read_text(encoding='utf-8'), encoding='utf-8')
+    with USERS_JSON_PATH.open('w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def next_user_id(data):
+    users = data.get('users', [])
+    if not users:
+        return 1
+    return int(max(u.get('id', 0) for u in users) + 1)
+
 def init_db():
-    conn = sqlite3.connect('face_recognition.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            face_encoding TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    # JSON-based storage; ensure file exists
+    _ensure_users_json()
+    build_encoding_cache()
 
 @app.route('/')
 def index():
@@ -45,17 +69,16 @@ def training():
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    conn = sqlite3.connect('face_recognition.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, name, created_at FROM users')
-    users = cursor.fetchall()
-    conn.close()
-    
-    return jsonify([{
-        'id': user[0],
-        'name': user[1],
-        'created_at': user[2]
-    } for user in users])
+    data = load_users_json()
+    users = data.get('users', [])
+    return jsonify([
+        {
+            'id': u.get('id'),
+            'name': u.get('name'),
+            'created_at': u.get('created_at')
+        }
+        for u in users
+    ])
 
 @app.route('/api/users', methods=['POST'])
 def add_user():
@@ -70,28 +93,37 @@ def add_user():
         return jsonify({'error': 'Không có dữ liệu khuôn mặt'}), 400
     
     try:
-        # Decode ảnh
-        image_array = decode_image(image_data)
-        if image_array is None:
+        # Lưu ảnh từ base64 sang file và ghi JSON
+        data_bytes = decode_dataurl_to_bytes(image_data)
+        if not data_bytes:
             return jsonify({'error': 'Không thể xử lý ảnh'}), 400
-        
-        # Trích xuất face encoding
-        face_encoding = get_face_encoding(image_array)
-        if face_encoding is None:
-            return jsonify({'error': 'Không tìm thấy khuôn mặt trong ảnh'}), 400
-        
-        # Encode face encoding thành base64 để lưu vào database
-        face_encoding_str = base64.b64encode(face_encoding.tobytes()).decode('utf-8')
-        
-        conn = sqlite3.connect('face_recognition.db')
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO users (name, face_encoding) VALUES (?, ?)', 
-                       (name, face_encoding_str))
-        conn.commit()
-        conn.close()
-        
+
+        with _users_lock:
+            users_data = load_users_json()
+            user_id = next_user_id(users_data)
+            # tạo thư mục và ghi file
+            now = datetime.utcnow()
+            subdir = now.strftime('%Y/%m')
+            user_dir = os.path.join('data', 'images', str(user_id), subdir)
+            os.makedirs(user_dir, exist_ok=True)
+            ts = now.strftime('%Y%m%d%H%M%S%f')
+            filename = f'{ts}_captured.jpg'
+            save_path = os.path.join(user_dir, filename)
+            with open(save_path, 'wb') as f:
+                f.write(data_bytes)
+
+            users = users_data.get('users', [])
+            users.append({
+                'id': user_id,
+                'name': name,
+                'created_at': datetime.utcnow().isoformat() + 'Z',
+                'images': [save_path]
+            })
+            users_data['users'] = users
+            save_users_json(users_data)
+
         return jsonify({'message': 'Thêm người dùng thành công'})
-        
+
     except Exception as e:
         print(f"Lỗi thêm người dùng: {e}")
         return jsonify({'error': 'Lỗi xử lý thêm người dùng'}), 500
@@ -120,11 +152,16 @@ def decode_image(image_data):
 def get_face_encoding(image_array):
     """Trích xuất face encoding từ ảnh"""
     try:
-        # Tìm khuôn mặt trong ảnh
-        face_locations = face_recognition.face_locations(image_array)
+        # Tiền xử lý: resize về tối đa 800px cạnh dài
+        image_array = preprocess_image(image_array)
+        # Tìm khuôn mặt trong ảnh (upsample để tăng khả năng phát hiện)
+        face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=1)
         
         if not face_locations:
-            return None
+            # Fallback thêm một lần upsample nếu chưa thấy
+            face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=2)
+            if not face_locations:
+                return None
         
         # Lấy encoding của khuôn mặt đầu tiên
         face_encodings = face_recognition.face_encodings(image_array, face_locations)
@@ -136,6 +173,286 @@ def get_face_encoding(image_array):
     except Exception as e:
         print(f"Lỗi trích xuất face encoding: {e}")
         return None
+
+def preprocess_image(image_array):
+    try:
+        h, w = image_array.shape[:2]
+        max_side = max(h, w)
+        target = 800
+        if max_side > target:
+            scale = target / float(max_side)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            image_array = cv2.resize(image_array, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        return image_array
+    except Exception as e:
+        print(f'Lỗi preprocess ảnh: {e}')
+        return image_array
+
+# ------------------ Encoding cache ------------------
+ENCODING_CACHE = []  # list of dicts: { 'id': int, 'name': str, 'encodings': [np.ndarray] }
+
+def build_encoding_cache():
+    global ENCODING_CACHE
+    ENCODING_CACHE = []
+    try:
+        users = load_users_json().get('users', [])
+        for u in users:
+            uid = u.get('id')
+            name = u.get('name')
+            paths = u.get('images', [])
+            encs = []
+            for p in paths:
+                try:
+                    with open(p, 'rb') as f:
+                        img = Image.open(io.BytesIO(f.read()))
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                        arr = np.array(img)
+                        e = get_face_encoding(arr)
+                        if e is not None:
+                            encs.append(e)
+                except Exception as e:
+                    print(f'Lỗi cache ảnh {p}: {e}')
+                    continue
+            if encs:
+                ENCODING_CACHE.append({'id': uid, 'name': name, 'encodings': encs})
+    except Exception as e:
+        print(f'Lỗi build cache: {e}')
+    print(f'Cache encodings sẵn sàng: {sum(len(x.get("encodings", [])) for x in ENCODING_CACHE)} vectors, {len(ENCODING_CACHE)} người dùng')
+
+def add_user_encodings_to_cache(user_id, name, image_paths):
+    try:
+        encs = []
+        for p in image_paths:
+            try:
+                with open(p, 'rb') as f:
+                    img = Image.open(io.BytesIO(f.read()))
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    arr = np.array(img)
+                    e = get_face_encoding(arr)
+                    if e is not None:
+                        encs.append(e)
+            except Exception as e:
+                print(f'Lỗi cache ảnh mới {p}: {e}')
+                continue
+        if encs:
+            ENCODING_CACHE.append({'id': user_id, 'name': name, 'encodings': encs})
+    except Exception as e:
+        print(f'Lỗi add cache: {e}')
+
+def find_best_match(query_encoding, tolerance=0.65):
+    """Tìm người phù hợp nhất theo khoảng cách thấp nhất"""
+    best_name = None
+    best_distance = 1e9
+    for entry in ENCODING_CACHE:
+        name = entry.get('name')
+        encs = entry.get('encodings', [])
+        if not encs:
+            continue
+        try:
+            distances = face_recognition.face_distance(encs, query_encoding)
+            dmin = float(np.min(distances)) if len(distances) > 0 else 1e9
+            if dmin < best_distance:
+                best_distance = dmin
+                best_name = name
+        except Exception as e:
+            print(f'Lỗi tính distance: {e}')
+            continue
+    if best_distance <= tolerance:
+        return best_name, best_distance
+    return None, best_distance
+
+def average_encodings(encodings_list):
+    try:
+        if not encodings_list:
+            return None
+        arr = np.vstack(encodings_list)
+        mean_vec = arr.mean(axis=0)
+        return mean_vec
+    except Exception as e:
+        print(f"Lỗi gộp encoding: {e}")
+        return None
+
+def save_image_file(user_id, file_storage):
+    try:
+        # Lưu ảnh vào data/images/<user_id>/YYYY/MM/<timestamp>_<filename>
+        now = datetime.utcnow()
+        subdir = now.strftime('%Y/%m')
+        user_dir = os.path.join('data', 'images', str(user_id), subdir)
+        os.makedirs(user_dir, exist_ok=True)
+        filename = secure_filename(file_storage.filename or f'image_{now.strftime("%H%M%S%f")}.jpg')
+        ts = now.strftime('%Y%m%d%H%M%S%f')
+        save_path = os.path.join(user_dir, f'{ts}_{filename}')
+        file_storage.save(save_path)
+        return save_path
+    except Exception as e:
+        print(f'Lỗi lưu ảnh: {e}')
+        return None
+
+def decode_dataurl_to_bytes(data_url):
+    try:
+        if ',' in data_url:
+            data_url = data_url.split(',')[1]
+        return base64.b64decode(data_url)
+    except Exception as e:
+        print(f'Lỗi decode data url: {e}')
+        return None
+
+@app.route('/api/users/multi', methods=['POST'])
+def add_user_multi():
+    data = request.json
+    name = data.get('name')
+    images_data = data.get('images') or []
+
+    if not name:
+        return jsonify({'error': 'Tên không được để trống'}), 400
+    if not images_data or not isinstance(images_data, list):
+        return jsonify({'error': 'Cần cung cấp danh sách ảnh (1-5 ảnh)'}), 400
+
+    try:
+        used = 0
+        saved_paths = []
+        with _users_lock:
+            users_data = load_users_json()
+            user_id = next_user_id(users_data)
+            now = datetime.utcnow()
+            subdir = now.strftime('%Y/%m')
+            user_dir = os.path.join('data', 'images', str(user_id), subdir)
+            os.makedirs(user_dir, exist_ok=True)
+
+            for img_b64 in images_data[:5]:
+                data_bytes = decode_dataurl_to_bytes(img_b64)
+                if not data_bytes:
+                    continue
+                ts = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+                filename = f'{ts}_captured.jpg'
+                path = os.path.join(user_dir, filename)
+                with open(path, 'wb') as f:
+                    f.write(data_bytes)
+                saved_paths.append(path)
+                used += 1
+
+            if not saved_paths:
+                return jsonify({'error': 'Không thể lưu ảnh hợp lệ'}), 400
+
+            users = users_data.get('users', [])
+            users.append({
+                'id': user_id,
+                'name': name,
+                'created_at': datetime.utcnow().isoformat() + 'Z',
+                'images': saved_paths
+            })
+            users_data['users'] = users
+            save_users_json(users_data)
+
+        # Cập nhật cache encodings
+        add_user_encodings_to_cache(user_id, name, saved_paths)
+
+        return jsonify({'message': 'Thêm người dùng thành công', 'images_used': used})
+
+    except Exception as e:
+        print(f"Lỗi thêm người dùng (multi): {e}")
+        return jsonify({'error': 'Lỗi xử lý thêm người dùng (multi)'}), 500
+
+@app.route('/api/users/upload', methods=['POST'])
+def add_user_upload():
+    name = request.form.get('name')
+    files = request.files.getlist('files')
+
+    if not name:
+        return jsonify({'error': 'Tên không được để trống'}), 400
+    if not files:
+        return jsonify({'error': 'Vui lòng upload 1-5 ảnh'}), 400
+
+    try:
+        with _users_lock:
+            users_data = load_users_json()
+            user_id = next_user_id(users_data)
+
+            saved_paths = []
+            used = 0
+            for file in files[:5]:
+                path = save_image_file(user_id, file)
+                if not path:
+                    continue
+                saved_paths.append(path)
+                used += 1
+
+            if not saved_paths:
+                return jsonify({'error': 'Không thể lưu ảnh hợp lệ'}), 400
+
+            users = users_data.get('users', [])
+            users.append({
+                'id': user_id,
+                'name': name,
+                'created_at': datetime.utcnow().isoformat() + 'Z',
+                'images': saved_paths
+            })
+            users_data['users'] = users
+            save_users_json(users_data)
+
+        # Cập nhật cache encodings
+        add_user_encodings_to_cache(user_id, name, saved_paths)
+
+        return jsonify({'message': 'Thêm người dùng thành công', 'user_id': user_id, 'images_used': used, 'saved': len(saved_paths)})
+
+    except Exception as e:
+        print(f'Lỗi thêm người dùng (upload): {e}')
+        return jsonify({'error': 'Lỗi xử lý thêm người dùng (upload)'}), 500
+
+@app.route('/api/recognize/upload', methods=['POST'])
+def recognize_upload():
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'recognized': False, 'message': 'Vui lòng upload 1-5 ảnh'}), 400
+
+    try:
+        encodings = []
+        used = 0
+        for file in files[:5]:
+            try:
+                img = Image.open(file.stream)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                image_array = np.array(img)
+                e = get_face_encoding(image_array)
+                if e is not None:
+                    encodings.append(e)
+                    used += 1
+            except Exception as e:
+                print(f'Lỗi đọc/trích xuất ảnh upload: {e}')
+                continue
+
+        if not encodings:
+            return jsonify({'recognized': False, 'message': 'Không tìm thấy khuôn mặt trong các ảnh'}), 400
+
+        fused = average_encodings(encodings)
+
+        conn = sqlite3.connect('face_recognition.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT name, face_encoding FROM users')
+        users = cursor.fetchall()
+        conn.close()
+
+        for user in users:
+            name, stored_encoding_str = user
+            if stored_encoding_str:
+                try:
+                    stored_encoding = np.frombuffer(base64.b64decode(stored_encoding_str), dtype=np.float64)
+                    matches = face_recognition.compare_faces([stored_encoding], fused, tolerance=0.6)
+                    if matches[0]:
+                        return jsonify({'recognized': True, 'name': name, 'message': f'Chào mừng ông {name} đã đến với hệ thống của chúng tôi', 'images_used': used})
+                except Exception as e:
+                    print(f'Lỗi so sánh khuôn mặt (upload): {e}')
+                    continue
+
+        return jsonify({'recognized': False, 'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'})
+
+    except Exception as e:
+        print(f'Lỗi nhận dạng (upload): {e}')
+        return jsonify({'recognized': False, 'message': 'Lỗi xử lý nhận dạng (upload)'}), 500
 
 @app.route('/api/recognize', methods=['POST'])
 def recognize_face():
@@ -165,33 +482,15 @@ def recognize_face():
                 'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
             }), 400
         
-        # So sánh với database
-        conn = sqlite3.connect('face_recognition.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT name, face_encoding FROM users')
-        users = cursor.fetchall()
-        conn.close()
-        
-        for user in users:
-            name, stored_encoding_str = user
-            
-            if stored_encoding_str:
-                try:
-                    # Decode stored encoding
-                    stored_encoding = np.frombuffer(base64.b64decode(stored_encoding_str), dtype=np.float64)
-                    
-                    # So sánh khuôn mặt
-                    matches = face_recognition.compare_faces([stored_encoding], current_face_encoding, tolerance=0.6)
-                    
-                    if matches[0]:
-                        return jsonify({
-                            'recognized': True,
-                            'name': name,
-                            'message': f'Chào mừng ông {name} đã đến với hệ thống của chúng tôi'
-                        })
-                except Exception as e:
-                    print(f"Lỗi so sánh khuôn mặt: {e}")
-                    continue
+        # So khớp bằng khoảng cách tốt nhất
+        name, dist = find_best_match(current_face_encoding, tolerance=0.65)
+        if name is not None:
+            return jsonify({
+                'recognized': True,
+                'name': name,
+                'message': f'Chào mừng ông {name} đã đến với hệ thống của chúng tôi',
+                'distance': dist
+            })
         
         return jsonify({
             'recognized': False,
@@ -203,6 +502,65 @@ def recognize_face():
         return jsonify({
             'recognized': False,
             'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
+        }), 500
+
+@app.route('/api/recognize/multi', methods=['POST'])
+def recognize_face_multi():
+    data = request.json
+    images_data = data.get('images') or []
+
+    if not images_data or not isinstance(images_data, list):
+        return jsonify({
+            'recognized': False,
+            'message': 'Vui lòng gửi danh sách ảnh (1-5 ảnh)'
+        }), 400
+
+    try:
+        encodings = []
+        for img_b64 in images_data[:5]:
+            image_array = decode_image(img_b64)
+            if image_array is None:
+                continue
+            e = get_face_encoding(image_array)
+            if e is not None:
+                encodings.append(e)
+
+        if not encodings:
+            return jsonify({
+                'recognized': False,
+                'message': 'Không tìm thấy khuôn mặt trong các ảnh'
+            }), 400
+
+        fused = average_encodings(encodings)
+        if fused is None:
+            return jsonify({
+                'recognized': False,
+                'message': 'Lỗi xử lý dữ liệu khuôn mặt'
+            }), 500
+
+        # So khớp bằng khoảng cách tốt nhất
+        name, dist = find_best_match(fused, tolerance=0.65)
+        if name is not None:
+            best_name = name
+            found = True
+
+        if found:
+            return jsonify({
+                'recognized': True,
+                'name': best_name,
+                'message': f'Chào mừng ông {best_name} đã đến với hệ thống của chúng tôi'
+            })
+
+        return jsonify({
+            'recognized': False,
+            'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
+        })
+
+    except Exception as e:
+        print(f"Lỗi nhận dạng khuôn mặt (multi): {e}")
+        return jsonify({
+            'recognized': False,
+            'message': 'Lỗi xử lý nhận dạng (multi)'
         }), 500
 
 @app.route('/api/tts', methods=['POST'])
@@ -235,11 +593,11 @@ if __name__ == '__main__':
     import os
     if os.path.exists('cert.pem') and os.path.exists('key.pem'):
         print("Chạy với HTTPS...")
-        print("Truy cập: https://localhost:5000")
-        app.run(debug=True, host='127.0.0.1', port=5000, ssl_context=('cert.pem', 'key.pem'))
+        print("Truy cập LAN: https://<IP_LAN>:5000")
+        app.run(debug=True, host='0.0.0.0', port=5000, ssl_context=('cert.pem', 'key.pem'))
     else:
         print("Chạy với HTTP (không có SSL certificate)...")
-        print("Truy cập: http://localhost:5000")
+        print("Truy cập LAN: http://<IP_LAN>:5000")
         print("Để chạy HTTPS, hãy tạo SSL certificate bằng lệnh:")
         print("openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365")
-        app.run(debug=True, host='127.0.0.1', port=5000) 
+        app.run(debug=True, host='0.0.0.0', port=5000)

@@ -32,11 +32,17 @@
                     <video id="video" autoplay muted playsinline></video>
                     <canvas id="canvas" style="display: none;"></canvas>
                 </div>
+                <div class="capture-multi-controls" style="margin-top:10px;">
+                    <button id="captureIdentify" class="btn btn-success" disabled>Chụp thêm ảnh</button>
+                    <button id="clearIdentify" class="btn btn-secondary">Xóa ảnh đã chụp</button>
+                    <small style="margin-left:10px;">(Tối đa 5 ảnh; có thể kết hợp upload)</small>
+                </div>
             </div>
 
             <div class="recognition-section">
                 <h2>Nhận dạng khuôn mặt</h2>
                 <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>
+                <!-- Theo yêu cầu: Không upload ảnh ở màn nhận dạng -->
                 
                 <div id="recognitionResult" class="result-container" style="display: none;">
                     <h3>Kết quả nhận dạng</h3>
