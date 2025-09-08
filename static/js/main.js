@@ -42,6 +42,8 @@ class FaceRecognitionApp {
         this.setupEventListeners();
         this.loadUsers();
         this.enableAudioOnFirstInteraction();
+        // Đồng bộ danh sách chào mừng từ checkins.json khi mở trang
+        this.syncWelcomeFromCheckins();
     }
     
     setupEventListeners() {
@@ -216,8 +218,13 @@ class FaceRecognitionApp {
         try {
             const userId = faceData.user_id;
             const displayName = faceData.name || '';
-            const gender = faceData.gender || '';
+            let gender = faceData.gender || '';
             const images = faceData.images || [];
+            // Thông tin hồ sơ để ghi vào checkin
+            let phone = '';
+            let company = '';
+            let department = '';
+            let position = '';
             
             // Kiểm tra trạng thái check-in trước
             const statusRes = await fetch(`/api/checkin-status/${userId}`);
@@ -228,17 +235,30 @@ class FaceRecognitionApp {
                 return false; // Trả về false để báo đã check-in rồi
             }
             
+            // Lấy thông tin đầy đủ từ API users trước khi ghi check-in
+            try {
+                const userRes = await fetch(`/api/users/${userId}`);
+                if (userRes.ok) {
+                    const userData = await userRes.json();
+                    phone = userData.phone || '';
+                    gender = userData.gender || gender || '';
+                    company = userData.company || '';
+                    department = userData.department || '';
+                    position = userData.position || '';
+                }
+            } catch (_) { /* ignore, fallback to defaults */ }
+
             // Tự động check-in
             const res = await fetch(`/api/checkin/${userId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     name: displayName, 
-                    phone: '', 
+                    phone: phone, 
                     gender: gender, 
-                    company: '', 
-                    department: '', 
-                    position: '' 
+                    company: company, 
+                    department: department, 
+                    position: position 
                 })
             });
             
@@ -253,8 +273,8 @@ class FaceRecognitionApp {
                         displayName, 
                         gender, 
                         images[0] || '', 
-                        userData.company || '', 
-                        userData.position || ''
+                        userData.company || company || '', 
+                        userData.position || position || ''
                     );
                 } catch (e) {
                     // Fallback nếu không lấy được thông tin đầy đủ
@@ -891,6 +911,51 @@ class FaceRecognitionApp {
         if (g === 'nam') return 'Ông';
         if (g === 'nữ' || g === 'nu') return 'Bà';
         return 'Quý khách';
+    }
+    
+    // Đồng bộ danh sách đã check-in từ API khi vào trang chủ
+    async syncWelcomeFromCheckins() {
+        try {
+            const res = await fetch('/api/checkins');
+            const data = await res.json();
+            if (!Array.isArray(data)) return;
+            // Sắp xếp mới nhất lên đầu
+            const sorted = data
+                .filter(c => c && c.name)
+                .sort((a, b) => new Date(b.checked_at) - new Date(a.checked_at));
+            // Lấy ảnh đầu tiên của từng user (nếu có)
+            const top = sorted.slice(0, 10);
+            const cache = {};
+            const withImages = await Promise.all(top.map(async c => {
+                let firstImage = '';
+                try {
+                    if (typeof c.user_id === 'number') {
+                        if (!cache[c.user_id]) {
+                            const ures = await fetch(`/api/users/${c.user_id}`);
+                            cache[c.user_id] = await ures.json();
+                        }
+                        const u = cache[c.user_id] || {};
+                        const imgs = Array.isArray(u.images) ? u.images : [];
+                        firstImage = imgs.length > 0 ? imgs[0] : '';
+                    }
+                } catch (e) { /* noop */ }
+                return {
+                    id: `${c.user_id}-${c.checked_at}`,
+                    name: c.name || '',
+                    gender: c.gender || '',
+                    title: this.getTitle(c.gender || ''),
+                    message: `Chúng tôi rất vui mừng được chào đón ${this.getTitle(c.gender || '').toLowerCase()} tham gia sự kiện! Hãy tận hưởng những phiên thảo luận bổ ích và cơ hội kết nối tuyệt vời.`,
+                    imageUrl: this.resolveImageUrl(firstImage),
+                    timestamp: new Date(c.checked_at),
+                    company: c.company || '',
+                    position: c.position || ''
+                };
+            }));
+            this.welcomeMessages = withImages;
+            this.renderWelcomeMessagesWithAnimation();
+        } catch (e) {
+            console.warn('Không thể đồng bộ check-ins:', e);
+        }
     }
     
     // Render danh sách chào mừng với hiệu ứng trượt

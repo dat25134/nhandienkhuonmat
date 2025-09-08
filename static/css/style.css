@@ -337,6 +337,7 @@ h2 {
     display: flex;
     flex-direction: column;
     align-items: center;
+    overflow: auto;
 }
 
 .welcome-card {
@@ -354,6 +355,7 @@ h2 {
     max-width: 600px;
     margin-left: auto;
     margin-right: auto;
+    min-height: fit-content;
 }
 
 .welcome-card:hover {
