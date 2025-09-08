@@ -19,7 +19,10 @@
 
         <main>
             <div class="users-section">
-                <h2>Khách đã check-in (mỗi khách chỉ 1 lần mới nhất)</h2>
+                <h2 style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span>Khách đã check-in (mỗi khách chỉ 1 lần mới nhất)</span>
+                    <button id="clearBtn" class="btn btn-danger" title="Xóa toàn bộ danh sách">Xóa danh sách</button>
+                </h2>
                 <div style="display:flex; gap:10px; margin-bottom: 15px; flex-wrap: wrap;">
                     <input id="search" type="text" placeholder="Tìm theo tên/điện thoại/công ty" style="flex:1; padding: 10px; border:2px solid #e0e0e0; border-radius:8px;">
                     <select id="genderFilter" class="camera-select" style="min-width:150px;">
@@ -69,13 +72,30 @@
             });
         }
 
+        async function refresh() {
+            all = await loadCheckins();
+            update();
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
-            const all = await loadCheckins();
+            let all = await loadCheckins();
             const search = document.getElementById('search');
             const gender = document.getElementById('genderFilter');
             const update = () => render(applyFilters(all));
             search.addEventListener('input', update);
             gender.addEventListener('change', update);
+            const clearBtn = document.getElementById('clearBtn');
+            clearBtn.addEventListener('click', async () => {
+                if (!confirm('Bạn có chắc muốn xóa toàn bộ danh sách check-in?')) return;
+                const res = await fetch('/api/checkins/clear', { method: 'POST' });
+                const js = await res.json();
+                if (js && js.status === 'ok') {
+                    all = [];
+                    update();
+                } else {
+                    alert('Không thể xóa danh sách.');
+                }
+            });
             update();
         });
     </script>

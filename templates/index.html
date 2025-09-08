@@ -19,7 +19,14 @@
         </header>
 
         <main>
-            <div class="camera-section">
+            <div class="welcome-section">
+                <h2>Khách mời đã check-in</h2>
+                <div id="welcomeMessages" class="welcome-cards-container">
+                    <div class="no-messages">Chưa có khách mời nào check-in</div>
+                </div>
+            </div>
+
+            <div class="camera-section compact">
                 <h2>Camera</h2>
                 <div class="camera-controls">
                     <select id="cameraSelect" class="camera-select">
@@ -29,7 +36,7 @@
                     <button id="stopCamera" class="btn btn-secondary" disabled>Tắt camera</button>
                 </div>
                 
-                <div class="video-container">
+                <div class="video-container compact">
                     <video id="video" autoplay muted playsinline></video>
                     <canvas id="canvas" style="display: none;"></canvas>
                 </div>
@@ -40,7 +47,7 @@
                 </div>
             </div>
 
-            <div class="recognition-section">
+            <div class="recognition-section compact">
                 <h2>Nhận dạng khuôn mặt</h2>
                 <div class="scan-controls" style="margin-bottom: 15px;">
                     <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>

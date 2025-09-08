@@ -787,53 +787,59 @@ def recognize_face_multi():
         }), 400
 
     try:
-        encodings = []
-        found = False
-        best_name = None
-        d1 = None
+        all_recognized = []
+        
         for img_b64 in images_data[:5]:
             image_array = decode_image(img_b64)
             if image_array is None:
                 continue
-            e = get_face_encoding(image_array)
-            if e is not None:
-                encodings.append(e)
+                
+            # Tìm tất cả khuôn mặt trong ảnh
+            face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=1)
+            if not face_locations:
+                face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=2)
+            
+            if not face_locations:
+                continue
+                
+            # Lấy encoding cho từng khuôn mặt
+            face_encodings = face_recognition.face_encodings(image_array, face_locations)
+            
+            for face_encoding in face_encodings:
+                # So khớp từng khuôn mặt
+                accepted, uid, uname, ugender, d1, d2 = match_centroid_strict(face_encoding)
+                if accepted:
+                    # Lấy thông tin đầy đủ
+                    users = load_users_json().get('users', [])
+                    user_info = None
+                    for u in users:
+                        if u.get('name') == uname:
+                            user_info = u
+                            break
+                    
+                    if user_info:
+                        all_recognized.append({
+                            'user_id': user_info.get('id'),
+                            'name': uname,
+                            'gender': ugender,
+                            'message': build_greeting(uname, ugender),
+                            'distance': d1,
+                            'images': user_info.get('images', [])
+                        })
 
-        if not encodings:
-            return jsonify({
-                'recognized': False,
-                'message': 'Không tìm thấy khuôn mặt trong các ảnh'
-            }), 400
-
-        fused = average_encodings(encodings)
-        if fused is None:
-            return jsonify({
-                'recognized': False,
-                'message': 'Lỗi xử lý dữ liệu khuôn mặt'
-            }), 500
-
-        # So khớp nghiêm ngặt theo centroid + gap
-        accepted, uid, uname, ugender, d1, d2 = match_centroid_strict(fused)
-        if accepted:
-            best_name = uname
-            found = True
-
-        if found:
-            # Lấy user_id và giới tính
-            uid = None
-            ugender = ''
-            users = load_users_json().get('users', [])
-            for u in users:
-                if u.get('name') == best_name:
-                    uid = u.get('id')
-                    ugender = u.get('gender', '')
-                    break
+        if all_recognized:
+            # Loại bỏ trùng lặp dựa trên user_id
+            unique_recognized = []
+            seen_ids = set()
+            for item in all_recognized:
+                if item['user_id'] not in seen_ids:
+                    unique_recognized.append(item)
+                    seen_ids.add(item['user_id'])
+            
             return jsonify({
                 'recognized': True,
-                'user_id': uid,
-                'name': best_name,
-                'message': build_greeting(best_name, ugender),
-                'distance': d1
+                'count': len(unique_recognized),
+                'faces': unique_recognized
             })
 
         return jsonify({
@@ -993,6 +999,39 @@ def checkin_user(user_id):
 def get_checkins():
     data = load_checkins_json()
     return jsonify(data.get('checkins', []))
+
+@app.route('/api/checkins/clear', methods=['POST'])
+def clear_checkins():
+    """Xóa toàn bộ danh sách check-in trong JSON."""
+    with _checkins_lock:
+        save_checkins_json({"checkins": []})
+    return jsonify({"status": "ok", "cleared": True})
+
+@app.route('/api/checkin-status/<int:user_id>', methods=['GET'])
+def check_checkin_status(user_id):
+    """Kiểm tra trạng thái check-in của user trong ngày"""
+    try:
+        data = load_checkins_json()
+        checkins = data.get('checkins', [])
+        
+        # Tìm check-in mới nhất của user
+        user_checkins = [c for c in checkins if c.get('user_id') == user_id]
+        if user_checkins:
+            # Sắp xếp theo thời gian check-in (mới nhất trước)
+            user_checkins.sort(key=lambda x: x.get('checked_at', ''), reverse=True)
+            latest_checkin = user_checkins[0]
+            
+            return jsonify({
+                'checked_in': True,
+                'checkin_time': latest_checkin.get('checked_at'),
+                'name': latest_checkin.get('name')
+            })
+        
+        return jsonify({'checked_in': False, 'checkin_time': None})
+        
+    except Exception as e:
+        print(f"Lỗi kiểm tra trạng thái check-in: {e}")
+        return jsonify({'checked_in': False, 'checkin_time': None}), 500
 
 if __name__ == '__main__':
     init_db()

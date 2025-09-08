@@ -16,7 +16,7 @@ class FaceRecognitionApp {
         this.autoScanInterval = null;
         this.scanDelay = null;
         this.isScanning = false;
-        this.scanCooldown = 10000; // 10 giây delay sau khi nhận dạng thành công
+        this.scanCooldown = 0; // Không delay, quét liên tục
         
         // Thống kê hiệu suất
         this.scanStats = {
@@ -31,6 +31,9 @@ class FaceRecognitionApp {
         this.audioEnabled = false;
         this.audioEl = null;
         this.audioCtx = null;
+        
+        // Danh sách chào mừng
+        this.welcomeMessages = [];
         
         this.init();
     }
@@ -150,37 +153,44 @@ class FaceRecognitionApp {
             if (result.recognized) {
                 this.scanStats.successfulScans++;
                 this.showRecognitionResult(result);
-                this.playWelcomeMessage(result.message);
-                this.recognizedUserId = result.user_id || null;
-                this.recognizedName = result.name || '';
-                if (this.recognizedUserId) {
-                    // Fetch profile and show card
-                    try {
-                        const r = await fetch(`/api/users/${this.recognizedUserId}`);
-                        const u = await r.json();
-                        const displayName = u.name || result.name || '';
-                        this.recognizedName = displayName;
-                        document.getElementById('infoName').textContent = displayName;
-                        document.getElementById('infoPhone').textContent = u.phone || '';
-                        document.getElementById('infoGender').textContent = u.gender || '';
-                        document.getElementById('infoCompany').textContent = u.company || '';
-                        document.getElementById('infoDepartment').textContent = u.department || '';
-                        document.getElementById('infoPosition').textContent = u.position || '';
-                        const card = document.getElementById('guestCard');
-                        if (card) card.style.display = 'block';
-                    } catch (e) { console.warn('Không tải được profile', e); }
-                    if (this.checkinBtn) this.checkinBtn.disabled = false;
+                
+                // Xử lý nhiều khuôn mặt được nhận diện
+                if (result.faces && result.faces.length > 0) {
+                    const newFaces = []; // Chỉ hiển thị khách chưa check-in
+                    for (const face of result.faces) {
+                        const isNewCheckin = await this.autoCheckin(face);
+                        if (isNewCheckin) {
+                            newFaces.push(face);
+                        }
+                    }
+                    
+                    // Chỉ hiển thị thông báo nếu có khách mới check-in
+                    if (newFaces.length > 0) {
+                        result.faces = newFaces;
+                        result.count = newFaces.length;
+                    } else {
+                        // Không hiển thị thông báo nếu tất cả đã check-in
+                        return;
+                    }
+                } else {
+                    // Fallback cho format cũ (1 khuôn mặt)
+                    this.recognizedUserId = result.user_id || null;
+                    this.recognizedName = result.name || '';
+                    if (this.recognizedUserId) {
+                        const isNewCheckin = await this.autoCheckin(result);
+                        if (!isNewCheckin) {
+                            // Không hiển thị thông báo nếu đã check-in
+                            return;
+                        }
+                    }
                 }
                 
-                // Nếu đang ở chế độ tự động quét và nhận dạng thành công, tạm dừng 10 giây
-                if (this.autoScanEnabled) {
-                    this.startScanCooldown();
-                }
+                // Không cần delay, tiếp tục quét liên tục
             } else {
                 this.showRecognitionResult(result);
                 // Thêm debug để kiểm tra
                 console.log('Không nhận diện được, message:', result.message);
-                this.playWelcomeMessage(result.message);
+                // Không phát âm thanh khi không nhận diện được
                 this.recognizedUserId = null;
                 if (this.checkinBtn) this.checkinBtn.disabled = true;
             }
@@ -199,6 +209,67 @@ class FaceRecognitionApp {
             this.isScanning = false;
             this.scanButton.disabled = false;
             this.scanButton.textContent = 'Quét khuôn mặt';
+        }
+    }
+
+    async autoCheckin(faceData) {
+        try {
+            const userId = faceData.user_id;
+            const displayName = faceData.name || '';
+            const gender = faceData.gender || '';
+            const images = faceData.images || [];
+            
+            // Kiểm tra trạng thái check-in trước
+            const statusRes = await fetch(`/api/checkin-status/${userId}`);
+            const statusData = await statusRes.json();
+            
+            if (statusData.checked_in) {
+                console.log(`${displayName} đã check-in rồi, bỏ qua thông báo`);
+                return false; // Trả về false để báo đã check-in rồi
+            }
+            
+            // Tự động check-in
+            const res = await fetch(`/api/checkin/${userId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    name: displayName, 
+                    phone: '', 
+                    gender: gender, 
+                    company: '', 
+                    department: '', 
+                    position: '' 
+                })
+            });
+            
+            if (res.ok) {
+                // Lấy thông tin đầy đủ từ API users
+                try {
+                    const userRes = await fetch(`/api/users/${userId}`);
+                    const userData = await userRes.json();
+                    
+                    // Thêm vào danh sách chào mừng với thông tin đầy đủ
+                    this.addWelcomeMessage(
+                        displayName, 
+                        gender, 
+                        images[0] || '', 
+                        userData.company || '', 
+                        userData.position || ''
+                    );
+                } catch (e) {
+                    // Fallback nếu không lấy được thông tin đầy đủ
+                    this.addWelcomeMessage(displayName, gender, images[0] || '');
+                }
+                
+                console.log('Auto check-in thành công cho:', displayName);
+                return true; // Trả về true để báo check-in thành công
+            } else {
+                console.error('Auto check-in thất bại cho:', displayName);
+                return false;
+            }
+        } catch (e) {
+            console.error('Lỗi auto check-in:', e);
+            return false;
         }
     }
 
@@ -322,17 +393,37 @@ class FaceRecognitionApp {
     
     showRecognitionResult(result) {
         if (result.recognized) {
-            this.resultContent.innerHTML = `
-                <div style="color: #27ae60; font-weight: bold; margin-bottom: 10px;">
-                    ✅ Nhận dạng thành công!
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <strong>Tên:</strong> ${result.name}
-                </div>
-                <div style="font-style: italic; color: #7f8c8d;">
-                    "${result.message}"
-                </div>
-            `;
+            if (result.faces && result.faces.length > 0) {
+                // Hiển thị nhiều khuôn mặt
+                const facesHtml = result.faces.map(face => `
+                    <div style="margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-weight: bold; color: #27ae60;">✅ ${face.name}</div>
+                        <div style="font-style: italic; color: #7f8c8d; font-size: 12px;">
+                            "${face.message}"
+                        </div>
+                    </div>
+                `).join('');
+                
+                this.resultContent.innerHTML = `
+                    <div style="color: #27ae60; font-weight: bold; margin-bottom: 10px;">
+                        ✅ Nhận dạng thành công ${result.count} khuôn mặt!
+                    </div>
+                    ${facesHtml}
+                `;
+            } else {
+                // Fallback cho format cũ
+                this.resultContent.innerHTML = `
+                    <div style="color: #27ae60; font-weight: bold; margin-bottom: 10px;">
+                        ✅ Nhận dạng thành công!
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <strong>Tên:</strong> ${result.name}
+                    </div>
+                    <div style="font-style: italic; color: #7f8c8d;">
+                        "${result.message}"
+                    </div>
+                `;
+            }
         } else {
             this.resultContent.innerHTML = `
                 <div style="color: #e74c3c; font-weight: bold; margin-bottom: 10px;">
@@ -346,10 +437,10 @@ class FaceRecognitionApp {
         
         this.resultContainer.style.display = 'block';
         
-        // Ẩn kết quả sau 8 giây (lâu hơn cho thông báo dài)
+        // Ẩn kết quả sau 5 giây (ngắn hơn vì có nhiều thông báo)
         setTimeout(() => {
             this.resultContainer.style.display = 'none';
-        }, 8000);
+        }, 5000);
     }
     
     async playWelcomeMessage(message) {
@@ -756,6 +847,113 @@ class FaceRecognitionApp {
         }
         
         console.log('Đã reset thông tin khách mời');
+    }
+    
+    // Chuẩn hóa URL ảnh giống màn /manage
+    resolveImageUrl(path) {
+        if (!path || typeof path !== 'string') return '';
+        const src = path.startsWith('data/images') ? `/media/${path}` : `/${path}`;
+        return src.replace('//', '/');
+    }
+
+    // Thêm thông báo chào mừng vào danh sách
+    addWelcomeMessage(name, gender, imageUrl, company = '', position = '') {
+        const title = this.getTitle(gender);
+        const message = `Chúng tôi rất vui mừng được chào đón ${title.toLowerCase()} tham gia sự kiện! Hãy tận hưởng những phiên thảo luận bổ ích và cơ hội kết nối tuyệt vời.`;
+        const timestamp = new Date();
+        
+        const welcomeItem = {
+            id: Date.now(),
+            name,
+            gender,
+            title,
+            message,
+            imageUrl: this.resolveImageUrl(imageUrl),
+            timestamp,
+            company,
+            position
+        };
+        
+        // Thêm vào đầu danh sách (mới nhất lên đầu)
+        this.welcomeMessages.unshift(welcomeItem);
+        
+        // Giới hạn tối đa 10 thông báo để tránh quá tải
+        if (this.welcomeMessages.length > 10) {
+            this.welcomeMessages = this.welcomeMessages.slice(0, 10);
+        }
+        
+        this.renderWelcomeMessagesWithAnimation();
+    }
+    
+    // Lấy title dựa trên giới tính
+    getTitle(gender) {
+        const g = (gender || '').trim().toLowerCase();
+        if (g === 'nam') return 'Ông';
+        if (g === 'nữ' || g === 'nu') return 'Bà';
+        return 'Quý khách';
+    }
+    
+    // Render danh sách chào mừng với hiệu ứng trượt
+    renderWelcomeMessagesWithAnimation() {
+        const container = document.getElementById('welcomeMessages');
+        if (!container) return;
+        
+        if (this.welcomeMessages.length === 0) {
+            container.innerHTML = '<div class="no-messages">Chưa có khách mời nào check-in</div>';
+            return;
+        }
+        
+        // Lưu trạng thái hiện tại để so sánh
+        const currentCards = container.querySelectorAll('.welcome-card');
+        const currentIds = Array.from(currentCards).map(card => card.dataset.id);
+        
+        // Render HTML mới
+        container.innerHTML = this.welcomeMessages.map((item, index) => `
+            <div class="welcome-card ${index === 0 ? 'new-card' : ''}" data-id="${item.id}">
+                <div class="welcome-card-header">
+                    <div class="welcome-profile-image">
+                        ${item.imageUrl ? 
+                            `<img src="${item.imageUrl}" alt="${item.name}" onerror="this.style.display='none'">` : 
+                            '<div class="no-image">👤</div>'
+                        }
+                    </div>
+                    <div class="welcome-guest-info">
+                        <div class="welcome-guest-name">Chào mừng ${item.title} ${item.name}</div>
+                        <div class="welcome-guest-title">${item.position || 'Khách mời'}</div>
+                        <div class="welcome-guest-company">${item.company || 'Tham gia sự kiện'}</div>
+                    </div>
+                </div>
+                <div class="welcome-message-box">
+                    <div class="welcome-message-text">${item.message}</div>
+                </div>
+                <div class="welcome-card-footer">
+                    <div class="welcome-checkin-time">${item.timestamp.toLocaleString('vi-VN')}</div>
+                    <div class="welcome-status-badge">Đã check-in</div>
+                </div>
+            </div>
+        `).join('');
+        
+        // Thêm hiệu ứng trượt xuống cho các card cũ
+        if (currentCards.length > 0) {
+            currentCards.forEach(card => {
+                if (!currentIds.includes(card.dataset.id)) {
+                    card.classList.add('slide-down');
+                }
+            });
+        }
+        
+        // Xóa class animation sau khi hoàn thành
+        setTimeout(() => {
+            const newCards = container.querySelectorAll('.welcome-card');
+            newCards.forEach(card => {
+                card.classList.remove('new-card', 'slide-down');
+            });
+        }, 800);
+    }
+    
+    // Render danh sách chào mừng (phương thức cũ để tương thích)
+    renderWelcomeMessages() {
+        this.renderWelcomeMessagesWithAnimation();
     }
 }
 
