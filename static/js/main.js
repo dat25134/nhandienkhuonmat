@@ -613,14 +613,8 @@ class FaceRecognitionApp {
         this.audioEnabled = true;
         console.log('Âm thanh đã được kích hoạt cho chế độ tự động quét');
         
-        // Bắt đầu quét tự động mỗi 3 giây
-        this.autoScanInterval = setInterval(() => {
-            if (!this.isScanning && !this.scanDelay) {
-                this.scanFace();
-            }
-        }, 3000);
-        
-        console.log('Chế độ tự động quét đã được bật');
+        // Không dùng interval 3s nữa. Realtime detection trong camera.js sẽ gọi scan khi thấy mặt.
+        console.log('Chế độ tự động quét đã được bật (realtime, không dùng interval)');
     }
     
     // Dừng chế độ tự động quét

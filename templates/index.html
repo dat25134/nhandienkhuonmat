@@ -38,6 +38,7 @@
                 
                 <div class="video-container compact">
                     <video id="video" autoplay muted playsinline></video>
+                    <canvas id="overlay" class="overlay-canvas"></canvas>
                     <canvas id="canvas" style="display: none;"></canvas>
                 </div>
                 <div class="capture-multi-controls" style="margin-top:10px;">
@@ -118,6 +119,8 @@
         }
     </script>
 
+    <script defer src="/static/face-api/dist/face-api.js"></script>
+    <script defer src="{{ url_for('static', filename='face-api/dist/face-api.js') }}"></script>
     <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>

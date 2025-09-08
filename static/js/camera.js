@@ -2,11 +2,16 @@ class CameraManager {
     constructor() {
         this.video = document.getElementById('video');
         this.canvas = document.getElementById('canvas');
+        this.overlay = document.getElementById('overlay');
         this.cameraSelect = document.getElementById('cameraSelect');
         this.startButton = document.getElementById('startCamera');
         this.stopButton = document.getElementById('stopCamera');
         this.stream = null;
         this.cameras = [];
+        this.detecting = false;
+        this.stableCounter = 0;
+        this.lastX = null;
+        this.cooling = false;
         
         this.init();
     }
@@ -129,6 +134,12 @@ class CameraManager {
             
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.video.srcObject = this.stream;
+            // Khi metadata có, resize overlay và bắt đầu realtime detection
+            const onReady = () => {
+                this.updateOverlaySize();
+                this.startRealtimeDetection();
+            };
+            if (this.video.readyState >= 1) onReady(); else this.video.onloadedmetadata = onReady;
             
             this.startButton.disabled = true;
             this.stopButton.disabled = false;
@@ -222,6 +233,91 @@ class CameraManager {
         context.drawImage(this.video, 0, 0);
         
         return this.canvas.toDataURL('image/jpeg', 0.8);
+    }
+
+    updateOverlaySize() {
+        if (!this.overlay || !this.video) return;
+        const rect = this.video.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        this.overlay.width = Math.max(1, Math.floor(rect.width * dpr));
+        this.overlay.height = Math.max(1, Math.floor(rect.height * dpr));
+        this.overlay.style.width = rect.width + 'px';
+        this.overlay.style.height = rect.height + 'px';
+        const ctx = this.overlay.getContext('2d');
+        if (ctx && dpr !== 1) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    async startRealtimeDetection() {
+        if (!window.faceapi) return;
+        try {
+            if (!window.__faceApiModelsLoaded) {
+                const base = '/static/face-api/model';
+                await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+                window.__faceApiModelsLoaded = true;
+            }
+        } catch (e) {
+            console.warn('Không thể tải model face-api:', e);
+            return;
+        }
+
+        this.detecting = true;
+        const loop = async () => {
+            if (!this.detecting || !this.video || this.video.readyState < 2) return requestAnimationFrame(loop);
+            const ctx = this.overlay ? this.overlay.getContext('2d') : null;
+            if (ctx) ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
+
+            // Phát hiện khuôn mặt
+            let detections = [];
+            try {
+                detections = await faceapi.detectAllFaces(this.video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.35 }));
+            } catch (_) {}
+
+            // Vẽ khung nếu có
+            if (ctx && detections && detections.length) {
+                const dpr = window.devicePixelRatio || 1;
+                const cssW = this.overlay.width / dpr;
+                const cssH = this.overlay.height / dpr;
+                const vw = this.video.videoWidth || cssW;
+                const vh = this.video.videoHeight || cssH;
+                const scale = Math.max(cssW / vw, cssH / vh);
+                const offsetX = (cssW - vw * scale) / 2;
+                const offsetY = (cssH - vh * scale) / 2;
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#22c55e';
+                detections.forEach(d => {
+                    const r = d.box;
+                    const x = (offsetX + r.x * scale) * dpr;
+                    const y = (offsetY + r.y * scale) * dpr;
+                    const w = (r.width * scale) * dpr;
+                    const h = (r.height * scale) * dpr;
+                    ctx.strokeRect(x, y, w, h);
+                });
+            }
+
+            // Ổn định và gọi BE
+            if (detections && detections.length) {
+                const x = detections[0].box.x | 0;
+                const stable = this.lastX === null || Math.abs(x - this.lastX) < 8;
+                this.stableCounter = stable ? this.stableCounter + 1 : 0;
+                this.lastX = x;
+                if (this.stableCounter >= 4 && !this.cooling) {
+                    try {
+                        if (window.faceRecognitionApp && typeof window.faceRecognitionApp.scanFace === 'function') {
+                            window.faceRecognitionApp.scanFace();
+                            this.cooling = true;
+                            setTimeout(() => { this.cooling = false; }, 1500);
+                        }
+                    } catch (_) {}
+                    this.stableCounter = 0;
+                }
+            } else {
+                this.stableCounter = 0;
+                this.lastX = null;
+            }
+
+            requestAnimationFrame(loop);
+        };
+        requestAnimationFrame(loop);
     }
     
     showError(message) {
