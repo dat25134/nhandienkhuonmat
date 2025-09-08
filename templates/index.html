@@ -42,7 +42,15 @@
 
             <div class="recognition-section">
                 <h2>Nhận dạng khuôn mặt</h2>
-                <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>
+                <div class="scan-controls" style="margin-bottom: 15px;">
+                    <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>
+                    <button id="autoScanToggle" class="btn btn-success" disabled>Bật tự động quét</button>
+                </div>
+                <div class="scan-status" style="margin-bottom: 10px;">
+                    <div id="autoScanStatus" style="font-weight: bold; font-size: 14px;">🔴 Tắt tự động quét</div>
+                    <div id="cooldownStatus" style="font-size: 12px; margin-top: 5px;"></div>
+                    <div id="scanStats" style="margin-top: 10px;"></div>
+                </div>
                 <!-- Theo yêu cầu: Không upload ảnh ở màn nhận dạng -->
                 <div class="guest-card" id="guestCard" style="display:none; margin-top:15px;">
                     <div class="guest-card-header">Thông tin khách mời</div>

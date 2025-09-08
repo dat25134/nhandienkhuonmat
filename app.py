@@ -741,6 +741,40 @@ def recognize_face():
             'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
         }), 500
 
+@app.route('/api/detect-face', methods=['POST'])
+def detect_face():
+    """API để kiểm tra có khuôn mặt trong ảnh hay không"""
+    data = request.json
+    image_data = data.get('image')
+    
+    if not image_data:
+        return jsonify({'has_face': False, 'message': 'Không có dữ liệu ảnh'}), 400
+    
+    try:
+        # Decode ảnh
+        image_array = decode_image(image_data)
+        if image_array is None:
+            return jsonify({'has_face': False, 'message': 'Lỗi decode ảnh'}), 400
+        
+        # Kiểm tra có khuôn mặt không
+        face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=1)
+        
+        if not face_locations:
+            # Thử upsample thêm một lần nữa
+            face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=2)
+        
+        has_face = len(face_locations) > 0
+        
+        return jsonify({
+            'has_face': has_face,
+            'face_count': len(face_locations),
+            'message': f'Phát hiện {len(face_locations)} khuôn mặt' if has_face else 'Không phát hiện khuôn mặt'
+        })
+        
+    except Exception as e:
+        print(f"Lỗi detect face: {e}")
+        return jsonify({'has_face': False, 'message': 'Lỗi xử lý phát hiện khuôn mặt'}), 500
+
 @app.route('/api/recognize/multi', methods=['POST'])
 def recognize_face_multi():
     data = request.json

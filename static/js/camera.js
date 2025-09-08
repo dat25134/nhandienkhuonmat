@@ -146,6 +146,20 @@ class CameraManager {
                 captureButton.disabled = false;
             }
             
+            // Kích hoạt nút tự động quét nếu có
+            const autoScanButton = document.getElementById('autoScanToggle');
+            if (autoScanButton) {
+                autoScanButton.disabled = false;
+            }
+            
+            // Tự động bật chế độ quét tự động khi camera được bật
+            if (window.faceRecognitionApp && typeof window.faceRecognitionApp.startAutoScan === 'function') {
+                // Chờ một chút để đảm bảo UI đã được cập nhật
+                setTimeout(() => {
+                    window.faceRecognitionApp.startAutoScan();
+                }, 500);
+            }
+            
         } catch (error) {
             console.error('Lỗi khởi động camera:', error);
             
@@ -184,6 +198,16 @@ class CameraManager {
         const captureButton = document.getElementById('captureFace');
         if (captureButton) {
             captureButton.disabled = true;
+        }
+        
+        const autoScanButton = document.getElementById('autoScanToggle');
+        if (autoScanButton) {
+            autoScanButton.disabled = true;
+        }
+        
+        // Tắt chế độ tự động quét khi camera bị tắt
+        if (window.faceRecognitionApp && typeof window.faceRecognitionApp.stopAutoScan === 'function') {
+            window.faceRecognitionApp.stopAutoScan();
         }
     }
     
