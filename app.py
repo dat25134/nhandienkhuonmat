@@ -25,9 +25,10 @@ def _ensure_init_once():
     global _APP_INIT_DONE
     if not _APP_INIT_DONE:
         try:
-            init_db()
+            # Build cache in background to avoid blocking first page load
+            threading.Thread(target=build_encoding_cache, daemon=True).start()
         except Exception as e:
-            print(f"Startup init_db error: {e}")
+            print(f"Startup cache build error: {e}")
         _APP_INIT_DONE = True
 
 # Đảm bảo các thư mục cần thiết tồn tại

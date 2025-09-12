@@ -118,6 +118,21 @@ class CameraManager {
         }
         
         try {
+            // Lazy-load face-api library if not loaded
+            if (!window.faceapi) {
+                await this.loadFaceApiScript('/static/face-api/dist/face-api.js');
+            }
+            // Ensure tinyFaceDetector model is loaded
+            if (!window.__faceApiModelsLoaded) {
+                const base = '/static/face-api/model';
+                try {
+                    await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+                    window.__faceApiModelsLoaded = true;
+                } catch (e) {
+                    console.warn('Không thể tải model face-api:', e);
+                }
+            }
+
             let constraints;
             
             if (selectedIndex === 'default') {
@@ -187,6 +202,17 @@ class CameraManager {
             
             this.showError(errorMessage);
         }
+    }
+
+    loadFaceApiScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.defer = true;
+            s.onload = () => resolve();
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
     }
     
     stopCamera() {
