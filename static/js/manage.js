@@ -95,6 +95,7 @@ class ManageApp {
     async saveProfile() {
         if (!this.editingId) return;
         const payload = {
+            name: document.getElementById('editName').value.trim(),
             phone: document.getElementById('editPhone').value.trim(),
             gender: document.getElementById('editGender').value.trim(),
             company: document.getElementById('editCompany').value.trim(),

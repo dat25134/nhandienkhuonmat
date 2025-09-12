@@ -413,6 +413,70 @@ def add_user_encodings_to_cache(user_id, name, image_paths):
     except Exception as e:
         print(f'Lỗi add cache: {e}')
 
+def remove_user_from_cache(user_id):
+    """Xóa user khỏi cache mà không rebuild toàn bộ"""
+    global ENCODING_CACHE, CENTROID_CACHE
+    ENCODING_CACHE = [u for u in ENCODING_CACHE if u.get('id') != user_id]
+    CENTROID_CACHE = [u for u in CENTROID_CACHE if u.get('id') != user_id]
+    print(f'Đã xóa user {user_id} khỏi cache')
+
+def rebuild_user_cache(user_id):
+    """Chỉ rebuild cache cho một user cụ thể"""
+    try:
+        # Xóa user cũ khỏi cache
+        remove_user_from_cache(user_id)
+        
+        # Tìm user trong database
+        data = load_users_json()
+        target_user = None
+        for u in data.get('users', []):
+            if u.get('id') == user_id:
+                target_user = u
+                break
+        
+        if not target_user:
+            print(f'User {user_id} không tồn tại trong database')
+            return
+        
+        # Rebuild cache cho user này
+        uid = target_user.get('id')
+        name = target_user.get('name')
+        gender = target_user.get('gender', '')
+        paths = target_user.get('images', [])
+        
+        if not paths:
+            print(f'User {user_id} không có ảnh')
+            return
+            
+        encs = []
+        for p in paths:
+            try:
+                with open(p, 'rb') as f:
+                    img = Image.open(io.BytesIO(f.read()))
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    arr = np.array(img)
+                    if compute_blur_score(arr) < BLUR_MIN_ENROLL:
+                        continue
+                    e = get_face_encoding(arr)
+                    if e is not None:
+                        encs.append(e)
+            except Exception as e:
+                print(f'Lỗi rebuild cache ảnh {p}: {e}')
+                continue
+        
+        if encs:
+            global ENCODING_CACHE, CENTROID_CACHE
+            ENCODING_CACHE.append({'id': uid, 'name': name, 'encodings': encs})
+            centroid = np.mean(np.vstack(encs), axis=0)
+            CENTROID_CACHE.append({'id': uid, 'name': name, 'gender': gender, 'centroid': centroid, 'count': len(encs)})
+            print(f'Đã rebuild cache cho user {user_id}: {len(encs)} encodings')
+        else:
+            print(f'User {user_id} không có ảnh hợp lệ để rebuild cache')
+            
+    except Exception as e:
+        print(f'Lỗi rebuild cache user {user_id}: {e}')
+
 def find_best_match(query_encoding, tolerance=0.65):
     """Tìm người phù hợp nhất theo khoảng cách thấp nhất"""
     best_name = None
@@ -884,7 +948,7 @@ def text_to_speech():
 @app.route('/api/users/<int:user_id>/profile', methods=['PUT'])
 def update_profile(user_id):
     data = request.json or {}
-    allowed = ['phone', 'gender', 'company', 'department', 'position']
+    allowed = ['name', 'phone', 'gender', 'company', 'department', 'position']
     update_fields = {k: sanitize_text(v if k != 'phone' else normalize_phone(v)) for k, v in data.items() if k in allowed}
     if not update_fields:
         return jsonify({'error': 'No fields to update'}), 400
@@ -947,8 +1011,9 @@ def delete_images_of_user(user_id):
                 u['images'] = [x for x in u.get('images', []) if x not in paths]
                 break
         save_users_json(data)
-    # Rebuild cache fully to drop deleted vectors
-    build_encoding_cache()
+    
+    # Chỉ rebuild cache cho user này thay vì toàn bộ
+    rebuild_user_cache(user_id)
     return jsonify({'removed': removed})
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
@@ -966,12 +1031,20 @@ def delete_user(user_id):
         # Không xóa thư mục ảnh theo yêu cầu hiện tại, chỉ bỏ liên kết
         data['users'] = [u for u in users if u.get('id') != user_id]
         save_users_json(data)
-    build_encoding_cache()
+    
+    # Chỉ xóa khỏi cache, không rebuild toàn bộ
+    remove_user_from_cache(user_id)
     return jsonify({'status': 'ok'})
 
 @app.route('/api/cache/rebuild', methods=['POST'])
 def rebuild_cache():
-    build_encoding_cache()
+    # Chỉ rebuild nếu cache rỗng hoặc có vấn đề
+    if not ENCODING_CACHE or len(ENCODING_CACHE) == 0:
+        print('Cache rỗng, đang rebuild toàn bộ...')
+        build_encoding_cache()
+    else:
+        print(f'Cache đã có {len(ENCODING_CACHE)} users, không cần rebuild')
+    
     return jsonify({'status': 'ok', 'users': len(ENCODING_CACHE)})
 
 @app.route('/api/checkin/<int:user_id>', methods=['POST'])
