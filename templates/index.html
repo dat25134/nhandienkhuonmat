@@ -54,6 +54,7 @@
                 <div class="scan-controls" style="margin-bottom: 15px;">
                     <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>
                     <button id="autoScanToggle" class="btn btn-success" disabled>Bật tự động quét</button>
+                    <button id="rebuildCacheBtn" class="btn btn-secondary" style="margin-left:10px">Rebuild cache</button>
                 </div>
                 <div class="scan-status" style="margin-bottom: 10px;">
                     <div id="autoScanStatus" style="font-weight: bold; font-size: 14px;">🔴 Tắt tự động quét</div>
@@ -120,9 +121,38 @@
         }
     </script>
 
-    <script defer src="/static/face-api/dist/face-api.js"></script>
     <script defer src="{{ url_for('static', filename='face-api/dist/face-api.js') }}"></script>
     <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    (function(){
+        const btn = document.getElementById('rebuildCacheBtn');
+        if (!btn) return;
+        btn.addEventListener('click', async function(){
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Đang rebuild...';
+            try {
+                const res = await fetch('/api/cache/rebuild', { method: 'POST' });
+                const data = await res.json().catch(()=>({}));
+                const ok = res.ok && data && (data.status === 'ok' || typeof data.users !== 'undefined');
+                showToast(ok ? 'Rebuild cache thành công' : 'Rebuild cache thất bại');
+            } catch (e) {
+                showToast('Rebuild cache lỗi');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = original;
+            }
+        });
+
+        function showToast(message){
+            const el = document.createElement('div');
+            el.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#333;color:#fff;padding:10px 14px;border-radius:6px;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.2);font-size:14px;';
+            el.textContent = message;
+            document.body.appendChild(el);
+            setTimeout(()=>{ el.remove(); }, 3000);
+        }
+    })();
+    </script>
 </body>
 </html> 

@@ -18,6 +18,18 @@ from openpyxl import load_workbook
 
 app = Flask(__name__)
 
+# Ensure encoding cache is built once on first request (Flask >=3 compatible)
+_APP_INIT_DONE = False
+@app.before_request
+def _ensure_init_once():
+    global _APP_INIT_DONE
+    if not _APP_INIT_DONE:
+        try:
+            init_db()
+        except Exception as e:
+            print(f"Startup init_db error: {e}")
+        _APP_INIT_DONE = True
+
 # Đảm bảo các thư mục cần thiết tồn tại
 os.makedirs('static/css', exist_ok=True)
 os.makedirs('static/js', exist_ok=True)
@@ -319,7 +331,7 @@ def preprocess_image(image_array):
     try:
         h, w = image_array.shape[:2]
         max_side = max(h, w)
-        target = 800
+        target = 640
         if max_side > target:
             scale = target / float(max_side)
             new_w = int(w * scale)
@@ -352,7 +364,7 @@ def build_encoding_cache():
             name = u.get('name')
             gender = u.get('gender', '')
             paths = u.get('images', [])
-            encs = []
+            scored_encs = []  # (blur_score, encoding)
             for p in paths:
                 try:
                     with open(p, 'rb') as f:
@@ -360,19 +372,22 @@ def build_encoding_cache():
                         if img.mode != 'RGB':
                             img = img.convert('RGB')
                         arr = np.array(img)
-                        # Blur quality filter for enrollment
-                        if compute_blur_score(arr) < BLUR_MIN_ENROLL:
+                        b = compute_blur_score(arr)
+                        if b < BLUR_MIN_ENROLL:
                             continue
                         e = get_face_encoding(arr)
                         if e is not None:
-                            encs.append(e)
+                            scored_encs.append((b, e))
                 except Exception as e:
                     print(f'Lỗi cache ảnh {p}: {e}')
                     continue
-            if encs:
-                ENCODING_CACHE.append({'id': uid, 'name': name, 'encodings': encs})
-                centroid = np.mean(np.vstack(encs), axis=0)
-                CENTROID_CACHE.append({'id': uid, 'name': name, 'gender': gender, 'centroid': centroid, 'count': len(encs)})
+            # Giữ tối đa 8 encoding chất lượng tốt nhất theo blur (giảm RAM)
+            if scored_encs:
+                scored_encs.sort(key=lambda t: t[0], reverse=True)
+                top_encs = [np.asarray(t[1], dtype=np.float32) for t in scored_encs[:8]]
+                ENCODING_CACHE.append({'id': uid, 'name': name, 'encodings': top_encs})
+                centroid = np.mean(np.vstack(top_encs), axis=0, dtype=np.float32)
+                CENTROID_CACHE.append({'id': uid, 'name': name, 'gender': gender, 'centroid': centroid, 'count': len(top_encs)})
     except Exception as e:
         print(f'Lỗi build cache: {e}')
     print(f'Cache encodings: {sum(len(x.get("encodings", [])) for x in ENCODING_CACHE)} vectors; centroids: {len(CENTROID_CACHE)} users')
@@ -396,8 +411,10 @@ def add_user_encodings_to_cache(user_id, name, image_paths):
                 print(f'Lỗi cache ảnh mới {p}: {e}')
                 continue
         if encs:
+            # chuyển sang float32
+            encs = [np.asarray(e, dtype=np.float32) for e in encs]
             ENCODING_CACHE.append({'id': user_id, 'name': name, 'encodings': encs})
-            centroid = np.mean(np.vstack(encs), axis=0)
+            centroid = np.mean(np.vstack(encs), axis=0, dtype=np.float32)
             # append or replace centroid for this user
             global CENTROID_CACHE
             CENTROID_CACHE = [c for c in CENTROID_CACHE if c.get('id') != user_id]
@@ -449,7 +466,7 @@ def rebuild_user_cache(user_id):
             print(f'User {user_id} không có ảnh')
             return
             
-        encs = []
+        scored_encs = []  # (blur_score, encoding)
         for p in paths:
             try:
                 with open(p, 'rb') as f:
@@ -457,19 +474,22 @@ def rebuild_user_cache(user_id):
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
                     arr = np.array(img)
-                    if compute_blur_score(arr) < BLUR_MIN_ENROLL:
+                    b = compute_blur_score(arr)
+                    if b < BLUR_MIN_ENROLL:
                         continue
                     e = get_face_encoding(arr)
                     if e is not None:
-                        encs.append(e)
+                        scored_encs.append((b, e))
             except Exception as e:
                 print(f'Lỗi rebuild cache ảnh {p}: {e}')
                 continue
         
-        if encs:
+        if scored_encs:
+            scored_encs.sort(key=lambda t: t[0], reverse=True)
+            encs = [np.asarray(t[1], dtype=np.float32) for t in scored_encs[:8]]
             global ENCODING_CACHE, CENTROID_CACHE
             ENCODING_CACHE.append({'id': uid, 'name': name, 'encodings': encs})
-            centroid = np.mean(np.vstack(encs), axis=0)
+            centroid = np.mean(np.vstack(encs), axis=0, dtype=np.float32)
             CENTROID_CACHE.append({'id': uid, 'name': name, 'gender': gender, 'centroid': centroid, 'count': len(encs)})
             print(f'Đã rebuild cache cho user {user_id}: {len(encs)} encodings')
         else:
@@ -488,7 +508,7 @@ def find_best_match(query_encoding, tolerance=0.65):
         if not encs:
             continue
         try:
-            distances = face_recognition.face_distance(encs, query_encoding)
+            distances = face_recognition.face_distance(np.asarray(encs, dtype=np.float32), np.asarray(query_encoding, dtype=np.float32))
             dmin = float(np.min(distances)) if len(distances) > 0 else 1e9
             if dmin < best_distance:
                 best_distance = dmin
@@ -512,8 +532,8 @@ def match_centroid_strict(query_encoding):
     if not CENTROID_CACHE:
         return False, None, None, None, None, None
     # build matrix
-    centroids = np.vstack([c['centroid'] for c in CENTROID_CACHE]).astype(np.float64)
-    dists = face_recognition.face_distance(centroids, query_encoding)
+    centroids = np.vstack([c['centroid'] for c in CENTROID_CACHE]).astype(np.float32)
+    dists = face_recognition.face_distance(centroids, np.asarray(query_encoding, dtype=np.float32))
     order = np.argsort(dists)
     if len(order) == 0:
         return False, None, None, None, None, None
@@ -693,67 +713,7 @@ def add_user_upload():
         print(f'Lỗi thêm người dùng (upload): {e}')
         return jsonify({'error': 'Lỗi xử lý thêm người dùng (upload)'}), 500
 
-@app.route('/api/recognize/upload', methods=['POST'])
-def recognize_upload():
-    files = request.files.getlist('files')
-    if not files:
-        return jsonify({'recognized': False, 'message': 'Vui lòng upload 1-5 ảnh'}), 400
-
-    try:
-        encodings = []
-        used = 0
-        for file in files[:5]:
-            try:
-                img = Image.open(file.stream)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                image_array = np.array(img)
-                e = get_face_encoding(image_array)
-                if e is not None:
-                    encodings.append(e)
-                    used += 1
-            except Exception as e:
-                print(f'Lỗi đọc/trích xuất ảnh upload: {e}')
-                continue
-
-        if not encodings:
-            return jsonify({'recognized': False, 'message': 'Không tìm thấy khuôn mặt trong các ảnh'}), 400
-
-        fused = average_encodings(encodings)
-
-        conn = sqlite3.connect('face_recognition.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT name, face_encoding FROM users')
-        users = cursor.fetchall()
-        conn.close()
-
-        for user in users:
-            name, stored_encoding_str = user
-            if stored_encoding_str:
-                try:
-                    stored_encoding = np.frombuffer(base64.b64decode(stored_encoding_str), dtype=np.float64)
-                    matches = face_recognition.compare_faces([stored_encoding], fused, tolerance=0.6)
-                    if matches[0]:
-                        # Greeting theo giới tính đã lưu
-                        ugender = ''
-                        try:
-                            users_json = load_users_json().get('users', [])
-                            for uu in users_json:
-                                if uu.get('name') == name:
-                                    ugender = uu.get('gender', '')
-                                    break
-                        except Exception:
-                            pass
-                        return jsonify({'recognized': True, 'name': name, 'message': build_greeting(name, ugender), 'images_used': used})
-                except Exception as e:
-                    print(f'Lỗi so sánh khuôn mặt (upload): {e}')
-                    continue
-
-        return jsonify({'recognized': False, 'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'})
-
-    except Exception as e:
-        print(f'Lỗi nhận dạng (upload): {e}')
-        return jsonify({'recognized': False, 'message': 'Lỗi xử lý nhận dạng (upload)'}), 500
+## Removed legacy endpoint /api/recognize/upload (unused)
 
 @app.route('/api/recognize', methods=['POST'])
 def recognize_face():

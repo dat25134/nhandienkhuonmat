@@ -99,6 +99,45 @@ Truy cập: `https://localhost:5000`
 
 **Lưu ý**: Khi truy cập HTTPS lần đầu, trình duyệt sẽ cảnh báo về certificate tự ký. Nhấp vào "Advanced" → "Proceed to localhost (unsafe)" để tiếp tục.
 
+## Triển khai Production với Gunicorn (khuyến nghị)
+
+### Chạy trực tiếp bằng Gunicorn
+
+```bash
+# Khởi chạy (điều chỉnh workers theo CPU: ~2-4)
+ENV=production OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+gunicorn app:app --bind 127.0.0.1:5000 --workers 3 --threads 2 --timeout 120
+```
+
+Ghi chú:
+- Ứng dụng có hook `@app.before_first_request` gọi `init_db()`, cache encodings sẽ tự build khi request đầu tiên tới.
+- Có nút "Rebuild cache" trong trang chủ để rebuild thủ công khi cần.
+
+### Kết hợp Nginx reverse proxy
+
+- Proxy `location /` tới `http://127.0.0.1:5000`.
+- Phục vụ `location /static/` và `location /media/` trực tiếp từ Nginx, bật cache:
+
+```
+location /static/ {
+    expires 30d;
+    add_header Cache-Control "public";
+}
+location /media/ {
+    expires 30d;
+    add_header Cache-Control "public";
+}
+```
+
+### Systemd (tùy chọn)
+
+```
+[Service]
+Environment="ENV=production" "OMP_NUM_THREADS=1" "OPENBLAS_NUM_THREADS=1"
+ExecStart=/path/to/venv/bin/gunicorn app:app --bind 127.0.0.1:5000 --workers 3 --threads 2 --timeout 120
+Restart=always
+```
+
 ## Sử dụng ứng dụng
 
 ### 1. Trang chủ (`/`)
@@ -167,120 +206,3 @@ nhan_dang_khuon_mat/
 - **Response**: JSON với `{"recognized": boolean, "name": "string", "message": "string"}`
 
 ### POST `/api/tts`
-- **Mô tả**: Text-to-Speech
-- **Body**: `{"text": "string"}`
-- **Response**: Audio file (MP3)
-
-## Xử lý lỗi thường gặp
-
-### 1. Lỗi cài đặt dlib/face-recognition
-
-**Lỗi**: `CMake is not installed` hoặc `Building wheel for dlib`
-
-**Giải pháp**:
-```bash
-# Cài đặt CMake và dependencies
-sudo apt update
-sudo apt install cmake build-essential pkg-config
-sudo apt install libx11-dev libatlas-base-dev libgtk-3-dev libboost-python-dev
-
-# Cài đặt lại
-pip install -r requirements.txt
-```
-
-### 2. Camera không hoạt động
-
-**Lỗi**: "MediaDevices API không được hỗ trợ"
-
-**Giải pháp**:
-- Đảm bảo truy cập qua HTTPS: `https://localhost:5000`
-- Cấp quyền camera cho trang web
-- Kiểm tra camera có hoạt động không: `ls /dev/video*`
-
-### 3. Lỗi TTS (Text-to-Speech)
-
-**Lỗi**: "getUserMedia is not implemented"
-
-**Giải pháp**:
-```bash
-# Cài đặt gTTS
-pip install gTTS==2.4.0
-
-# Kiểm tra kết nối internet (gTTS cần internet)
-```
-
-### 4. Lỗi SSL certificate
-
-**Lỗi**: "This site can't be reached"
-
-**Giải pháp**:
-```bash
-# Tạo lại SSL certificate
-openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
-
-# Chạy lại ứng dụng
-python app.py
-```
-
-## Tùy chỉnh
-
-### Thay đổi thông báo
-
-Sửa file `app.py`:
-```python
-# Thông báo khi nhận dạng thành công
-'message': f'Chào mừng ông {name} đã đến với hệ thống của chúng tôi'
-
-# Thông báo khi không nhận dạng được
-'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
-```
-
-### Thay đổi độ chính xác nhận dạng
-
-Sửa file `app.py`:
-```python
-# Giảm tolerance để tăng độ chính xác (0.4-0.6)
-matches = face_recognition.compare_faces([stored_encoding], current_face_encoding, tolerance=0.6)
-```
-
-### Thay đổi ngôn ngữ TTS
-
-Sửa file `app.py`:
-```python
-# Thay đổi ngôn ngữ TTS
-tts = gTTS(text=text, lang='vi', slow=False)  # 'vi' cho tiếng Việt
-```
-
-## Bảo mật
-
-- **Database**: Sử dụng SQLite với face encoding được mã hóa base64
-- **HTTPS**: SSL certificate tự ký cho camera access
-- **Validation**: Kiểm tra dữ liệu đầu vào trước khi xử lý
-- **Error handling**: Xử lý lỗi an toàn không để lộ thông tin nhạy cảm
-
-## Đóng góp
-
-1. Fork dự án
-2. Tạo feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Tạo Pull Request
-
-## License
-
-Dự án này được phát hành dưới MIT License.
-
-## Hỗ trợ
-
-Nếu gặp vấn đề, vui lòng:
-1. Kiểm tra phần "Xử lý lỗi thường gặp"
-2. Xem log trong terminal khi chạy ứng dụng
-3. Kiểm tra Console trong Developer Tools của trình duyệt
-4. Tạo issue với thông tin chi tiết về lỗi
-
----
-
-**Lưu ý**: Đây là dự án demo, không nên sử dụng trong môi trường production mà không có các biện pháp bảo mật bổ sung. 
-
-Testing:
-python tools/generate_test_data.py --num_users 600 --min_images 3 --max_images 5 --src_dir <thu_muc_chua_hinh_anh>
