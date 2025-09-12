@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo - Import Excel</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <style>
+        .demo-container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .demo-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+        .warning {
+            border-left-color: #ffc107;
+            background: #fffbf0;
+        }
+        .info {
+            border-left-color: #17a2b8;
+            background: #f0f8ff;
+        }
+        .code {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+            border: 1px solid #e9ecef;
+        }
+        .step {
+            background: #e3f2fd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 3px solid #2196f3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>📊 Demo: Chức năng Import Excel</h1>
+        
+        <div class="demo-section success">
+            <h3>✅ Tính năng đã hoàn thành</h3>
+            <ul>
+                <li><strong>Download Template:</strong> Tải file Excel mẫu với định dạng chuẩn</li>
+                <li><strong>Import Excel:</strong> Upload và xử lý file Excel để thêm khách hàng loạt</li>
+                <li><strong>Validation:</strong> Kiểm tra dữ liệu, trùng lặp, và báo lỗi chi tiết</li>
+                <li><strong>UI/UX:</strong> Giao diện thân thiện với progress indicator</li>
+            </ul>
+        </div>
+
+        <div class="demo-section">
+            <h3>📋 Cấu trúc Template Excel</h3>
+            <p>File template bao gồm các cột sau:</p>
+            <table>
+                <tr>
+                    <th>Cột</th>
+                    <th>Tên cột</th>
+                    <th>Bắt buộc</th>
+                    <th>Mô tả</th>
+                </tr>
+                <tr>
+                    <td>A</td>
+                    <td>STT</td>
+                    <td>❌</td>
+                    <td>Số thứ tự (tự động)</td>
+                </tr>
+                <tr>
+                    <td>B</td>
+                    <td>Họ và tên</td>
+                    <td>✅</td>
+                    <td>Tên đầy đủ của khách</td>
+                </tr>
+                <tr>
+                    <td>C</td>
+                    <td>Số điện thoại</td>
+                    <td>✅</td>
+                    <td>Số điện thoại (không trùng lặp)</td>
+                </tr>
+                <tr>
+                    <td>D</td>
+                    <td>Giới tính</td>
+                    <td>❌</td>
+                    <td>Nam, Nữ, hoặc Khác</td>
+                </tr>
+                <tr>
+                    <td>E</td>
+                    <td>Công ty</td>
+                    <td>❌</td>
+                    <td>Tên công ty</td>
+                </tr>
+                <tr>
+                    <td>F</td>
+                    <td>Bộ phận</td>
+                    <td>❌</td>
+                    <td>Bộ phận làm việc</td>
+                </tr>
+                <tr>
+                    <td>G</td>
+                    <td>Vị trí</td>
+                    <td>❌</td>
+                    <td>Chức vụ</td>
+                </tr>
+                <tr>
+                    <td>H</td>
+                    <td>Ghi chú</td>
+                    <td>❌</td>
+                    <td>Ghi chú thêm</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="demo-section">
+            <h3>🚀 Cách sử dụng</h3>
+            
+            <div class="step">
+                <strong>Bước 1:</strong> Truy cập màn hình <code>/manage</code>
+            </div>
+            
+            <div class="step">
+                <strong>Bước 2:</strong> Click button <strong>"Tải template Excel"</strong>
+                <div class="code">
+                    📥 File template_khach_moi.xlsx sẽ được tải về
+                </div>
+            </div>
+            
+            <div class="step">
+                <strong>Bước 3:</strong> Mở file Excel và điền thông tin khách
+                <div class="code">
+                    ✅ Điền ít nhất: Họ và tên + Số điện thoại<br>
+                    ✅ Các cột khác có thể để trống<br>
+                    ✅ Lưu file sau khi hoàn thành
+                </div>
+            </div>
+            
+            <div class="step">
+                <strong>Bước 4:</strong> Upload file Excel lên hệ thống
+                <div class="code">
+                    📤 Chọn file Excel (.xlsx hoặc .xls)<br>
+                    📤 Click "Import Excel"<br>
+                    📤 Chờ xử lý và xem kết quả
+                </div>
+            </div>
+            
+            <div class="step">
+                <strong>Bước 5:</strong> Cập nhật ảnh cho từng khách
+                <div class="code">
+                    🖼️ Click "Sửa" bên cạnh khách cần thêm ảnh<br>
+                    🖼️ Upload ảnh training (1-5 ảnh)<br>
+                    🖼️ Lưu để hoàn tất
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section warning">
+            <h3>⚠️ Lưu ý quan trọng</h3>
+            <ul>
+                <li><strong>Định dạng file:</strong> Chỉ hỗ trợ .xlsx và .xls</li>
+                <li><strong>Dữ liệu bắt buộc:</strong> Họ tên và số điện thoại</li>
+                <li><strong>Trùng lặp:</strong> Số điện thoại không được trùng</li>
+                <li><strong>Ảnh:</strong> Sẽ được thêm sau khi import thành công</li>
+                <li><strong>Lỗi:</strong> Hệ thống sẽ báo chi tiết các lỗi gặp phải</li>
+            </ul>
+        </div>
+
+        <div class="demo-section info">
+            <h3>🔧 Tính năng kỹ thuật</h3>
+            <h4>Frontend (JavaScript):</h4>
+            <div class="code">
+// Download template<br>
+downloadTemplate() {<br>
+&nbsp;&nbsp;const link = document.createElement('a');<br>
+&nbsp;&nbsp;link.href = '/api/excel/template';<br>
+&nbsp;&nbsp;link.download = 'template_khach_moi.xlsx';<br>
+&nbsp;&nbsp;link.click();<br>
+}<br><br>
+// Import Excel<br>
+async importExcel() {<br>
+&nbsp;&nbsp;const formData = new FormData();<br>
+&nbsp;&nbsp;formData.append('file', file);<br>
+&nbsp;&nbsp;const response = await fetch('/api/excel/import', {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;method: 'POST',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;body: formData<br>
+&nbsp;&nbsp;});<br>
+}
+            </div>
+            
+            <h4>Backend (Python):</h4>
+            <div class="code">
+@app.route('/api/excel/template', methods=['GET'])<br>
+def download_excel_template():<br>
+&nbsp;&nbsp;return send_from_directory(...)<br><br>
+@app.route('/api/excel/import', methods=['POST'])<br>
+def import_excel():<br>
+&nbsp;&nbsp;wb = load_workbook(file)<br>
+&nbsp;&nbsp;# Xử lý dữ liệu từ Excel<br>
+&nbsp;&nbsp;# Validation và lưu vào database
+            </div>
+        </div>
+
+        <div class="demo-section success">
+            <h3>📊 Kết quả mong đợi</h3>
+            <p>Sau khi import thành công:</p>
+            <ul>
+                <li>✅ Hiển thị số lượng khách đã thêm</li>
+                <li>✅ Hiển thị số khách bị bỏ qua (nếu có)</li>
+                <li>✅ Danh sách khách được cập nhật ngay lập tức</li>
+                <li>✅ Có thể chỉnh sửa thông tin từng khách</li>
+                <li>✅ Có thể thêm ảnh training cho từng khách</li>
+            </ul>
+        </div>
+
+        <div class="demo-section">
+            <h3>🎯 Lợi ích</h3>
+            <ul>
+                <li><strong>Tiết kiệm thời gian:</strong> Import hàng loạt thay vì nhập từng người</li>
+                <li><strong>Chuẩn hóa dữ liệu:</strong> Template đảm bảo định dạng đúng</li>
+                <li><strong>Xử lý lỗi thông minh:</strong> Báo cáo chi tiết các vấn đề</li>
+                <li><strong>Linh hoạt:</strong> Có thể bỏ qua các cột không cần thiết</li>
+                <li><strong>An toàn:</strong> Kiểm tra trùng lặp và validation</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -24,7 +24,20 @@
                 <div style="display:flex; gap:10px; margin-bottom: 12px; flex-wrap: wrap;">
                     <input id="searchUser" type="text" placeholder="Tìm theo tên/điện thoại/công ty" style="flex:1; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
                     <button id="rebuildCache" class="btn btn-secondary">Làm mới cache nhận diện</button>
+                    <button id="downloadTemplate" class="btn btn-info">Tải template Excel</button>
+                    <a href="/api/excel/template" download="template_khach_moi.xlsx" class="btn btn-info" style="text-decoration: none;">Tải trực tiếp</a>
                     <button id="deleteAllUsers" class="btn btn-danger">Xóa toàn bộ khách</button>
+                </div>
+                
+                <!-- Excel Import Section -->
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #dee2e6;">
+                    <h3 style="margin: 0 0 10px 0; color: #495057;">📊 Import từ Excel</h3>
+                    <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center;">
+                        <input id="excelFile" type="file" accept=".xlsx,.xls" style="flex:1; padding:8px; border:2px solid #e0e0e0; border-radius:6px;">
+                        <button id="importExcel" class="btn btn-success">Import Excel</button>
+                        <button id="clearImport" class="btn btn-secondary">Xóa file</button>
+                    </div>
+                    <div id="importStatus" style="margin-top: 10px; font-size: 14px;"></div>
                 </div>
                 <div id="userList" class="users-list"></div>
             </div>

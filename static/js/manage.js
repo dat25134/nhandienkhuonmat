@@ -5,6 +5,11 @@ class ManageApp {
         this.rebuildBtn = document.getElementById('rebuildCache');
         this.deleteAllBtn = document.getElementById('deleteAllUsers');
         this.editPanel = document.getElementById('editPanel');
+        this.excelFile = document.getElementById('excelFile');
+        this.importBtn = document.getElementById('importExcel');
+        this.clearBtn = document.getElementById('clearImport');
+        this.downloadTemplateBtn = document.getElementById('downloadTemplate');
+        this.importStatus = document.getElementById('importStatus');
         this.editingId = null;
         this.selectedPaths = new Set();
         this.bind();
@@ -18,6 +23,9 @@ class ManageApp {
             alert('Đã làm mới cache nhận diện');
         });
         this.deleteAllBtn.addEventListener('click', () => this.deleteAllUsers());
+        this.downloadTemplateBtn.addEventListener('click', () => this.downloadTemplate());
+        this.importBtn.addEventListener('click', () => this.importExcel());
+        this.clearBtn.addEventListener('click', () => this.clearImport());
         document.getElementById('saveProfile').addEventListener('click', () => this.saveProfile());
         document.getElementById('deleteUser').addEventListener('click', () => this.deleteUser());
         document.getElementById('uploadImagesBtn').addEventListener('click', () => this.uploadImages());
@@ -190,6 +198,99 @@ class ManageApp {
         } finally {
             this.deleteAllBtn.disabled = false;
             this.deleteAllBtn.textContent = 'Xóa toàn bộ khách';
+        }
+    }
+
+    async downloadTemplate() {
+        try {
+            this.showStatus('📥 Đang tải template Excel...', 'info');
+            
+            // Sử dụng fetch để kiểm tra response trước
+            const response = await fetch('/api/excel/template');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            // Lấy blob data
+            const blob = await response.blob();
+            
+            // Tạo URL object
+            const url = window.URL.createObjectURL(blob);
+            
+            // Tạo link download
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'template_khach_moi.xlsx';
+            link.style.display = 'none';
+            
+            // Thêm vào DOM, click, rồi xóa
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Cleanup URL object
+            window.URL.revokeObjectURL(url);
+            
+            this.showStatus('✅ Đã tải template Excel thành công!', 'success');
+            
+        } catch (error) {
+            console.error('Download template error:', error);
+            this.showStatus(`❌ Lỗi tải template: ${error.message}`, 'error');
+        }
+    }
+
+    clearImport() {
+        this.excelFile.value = '';
+        this.showStatus('🗑️ Đã xóa file Excel', 'info');
+    }
+
+    showStatus(message, type = 'info') {
+        this.importStatus.innerHTML = `<span style="color: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8'}">${message}</span>`;
+        setTimeout(() => {
+            this.importStatus.innerHTML = '';
+        }, 5000);
+    }
+
+    async importExcel() {
+        const file = this.excelFile.files[0];
+        if (!file) {
+            this.showStatus('❌ Vui lòng chọn file Excel', 'error');
+            return;
+        }
+
+        if (!file.name.match(/\.(xlsx|xls)$/i)) {
+            this.showStatus('❌ Vui lòng chọn file Excel (.xlsx hoặc .xls)', 'error');
+            return;
+        }
+
+        try {
+            this.importBtn.disabled = true;
+            this.importBtn.textContent = 'Đang import...';
+            this.showStatus('⏳ Đang xử lý file Excel...', 'info');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/api/excel/import', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                this.showStatus(`✅ Import thành công! Đã thêm ${result.added} khách, ${result.skipped} khách bị bỏ qua`, 'success');
+                this.loadUsers(); // Refresh danh sách
+                this.excelFile.value = ''; // Clear file input
+            } else {
+                this.showStatus(`❌ Import thất bại: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            this.showStatus(`❌ Lỗi kết nối: ${error.message}`, 'error');
+        } finally {
+            this.importBtn.disabled = false;
+            this.importBtn.textContent = 'Import Excel';
         }
     }
 }
