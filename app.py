@@ -180,6 +180,10 @@ def checkins_page():
 def manage_page():
     return render_template('manage.html')
 
+@app.route('/welcome')
+def welcome_page():
+    return render_template('welcome.html')
+
 @app.route('/api/users', methods=['GET'])
 def get_users():
     data = load_users_json()
