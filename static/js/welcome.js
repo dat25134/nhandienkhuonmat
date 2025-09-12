@@ -5,6 +5,7 @@
     const brandTitle = document.querySelector('.brand-title');
     const leftPane = document.querySelector('.left-pane');
     const fireworksCanvas = document.getElementById('fxFireworks');
+    const flagContainer = document.querySelector('.flag-container');
     const MAX_LIST = 8;
     const DISPLAY_MS = 10000; // 10s
     let queue = [];
@@ -131,6 +132,13 @@
                 if (rightPane) rightPane.classList.toggle('hidden', !hasAny);
                 if (brandTitle) brandTitle.classList.toggle('hidden', !hasAny);
                 if (leftPane) leftPane.classList.toggle('wide', !hasAny);
+                if (flagContainer) {
+                    if (hasAny) {
+                        flagContainer.classList.remove('non-checkin');
+                    } else {
+                        flagContainer.classList.add('non-checkin');
+                    }
+                }
                 lastHasAny = hasAny;
             }
 
@@ -169,6 +177,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         // Immediately render initial state
         if (leftPane) leftPane.classList.add('wide');
+        if (flagContainer) flagContainer.classList.add('non-checkin');
         showDefaultHero();
         tick();
         setInterval(tick, 2000);
