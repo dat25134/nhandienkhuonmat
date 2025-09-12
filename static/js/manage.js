@@ -3,6 +3,7 @@ class ManageApp {
         this.userList = document.getElementById('userList');
         this.search = document.getElementById('searchUser');
         this.rebuildBtn = document.getElementById('rebuildCache');
+        this.deleteAllBtn = document.getElementById('deleteAllUsers');
         this.editPanel = document.getElementById('editPanel');
         this.editingId = null;
         this.selectedPaths = new Set();
@@ -16,6 +17,7 @@ class ManageApp {
             await fetch('/api/cache/rebuild', { method: 'POST' });
             alert('Đã làm mới cache nhận diện');
         });
+        this.deleteAllBtn.addEventListener('click', () => this.deleteAllUsers());
         document.getElementById('saveProfile').addEventListener('click', () => this.saveProfile());
         document.getElementById('deleteUser').addEventListener('click', () => this.deleteUser());
         document.getElementById('uploadImagesBtn').addEventListener('click', () => this.uploadImages());
@@ -152,6 +154,42 @@ class ManageApp {
             this.loadUsers();
         } else {
             alert('Xóa khách thất bại');
+        }
+    }
+
+    async deleteAllUsers() {
+        // Xác nhận kép để tránh xóa nhầm
+        const confirm1 = confirm('⚠️ CẢNH BÁO: Bạn sắp xóa TOÀN BỘ khách và dữ liệu hình ảnh!\n\nThao tác này KHÔNG THỂ HOÀN TÁC!\n\nBạn có chắc chắn muốn tiếp tục?');
+        if (!confirm1) return;
+        
+        const confirm2 = confirm('⚠️ XÁC NHẬN LẦN CUỐI:\n\nBạn sẽ xóa TẤT CẢ khách và ảnh trong hệ thống!\n\nNhập "XÓA TẤT CẢ" để xác nhận:');
+        if (!confirm2) return;
+        
+        const confirmText = prompt('Để xác nhận, vui lòng nhập "XÓA TẤT CẢ" (chính xác):');
+        if (confirmText !== 'XÓA TẤT CẢ') {
+            alert('Hủy bỏ thao tác xóa toàn bộ');
+            return;
+        }
+        
+        try {
+            this.deleteAllBtn.disabled = true;
+            this.deleteAllBtn.textContent = 'Đang xóa...';
+            
+            const res = await fetch('/api/users/delete-all', { method: 'DELETE' });
+            if (res.ok) {
+                const data = await res.json();
+                alert(`✅ Đã xóa thành công ${data.deleted_users} khách và ${data.deleted_images} ảnh!`);
+                this.editPanel.style.display = 'none';
+                this.loadUsers();
+            } else {
+                const error = await res.json();
+                alert(`❌ Xóa thất bại: ${error.error || 'Lỗi không xác định'}`);
+            }
+        } catch (error) {
+            alert(`❌ Lỗi kết nối: ${error.message}`);
+        } finally {
+            this.deleteAllBtn.disabled = false;
+            this.deleteAllBtn.textContent = 'Xóa toàn bộ khách';
         }
     }
 }

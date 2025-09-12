@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo - Xóa toàn bộ khách</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <style>
+        .demo-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .demo-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .warning {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+        .code {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🔧 Demo: Chức năng Xóa toàn bộ khách</h1>
+        
+        <div class="demo-section warning">
+            <h3>⚠️ Cảnh báo</h3>
+            <p>Chức năng này sẽ xóa <strong>TẤT CẢ</strong> dữ liệu trong hệ thống:</p>
+            <ul>
+                <li>Toàn bộ danh sách khách</li>
+                <li>Tất cả hình ảnh training</li>
+                <li>Dữ liệu check-in</li>
+                <li>Cache nhận diện</li>
+            </ul>
+            <p><strong>Thao tác này KHÔNG THỂ HOÀN TÁC!</strong></p>
+        </div>
+
+        <div class="demo-section">
+            <h3>🛡️ Các biện pháp bảo vệ</h3>
+            <ol>
+                <li><strong>Xác nhận 3 lần:</strong>
+                    <div class="code">
+                        1. Dialog xác nhận đầu tiên<br>
+                        2. Dialog xác nhận lần 2<br>
+                        3. Nhập chính xác "XÓA TẤT CẢ"
+                    </div>
+                </li>
+                <li><strong>UI Protection:</strong>
+                    <div class="code">
+                        - Button bị disable khi đang xử lý<br>
+                        - Hiển thị "Đang xóa..."<br>
+                        - Xử lý lỗi kết nối
+                    </div>
+                </li>
+                <li><strong>Complete Cleanup:</strong>
+                    <div class="code">
+                        - Xóa users từ database<br>
+                        - Xóa toàn bộ thư mục ảnh<br>
+                        - Clear encoding cache<br>
+                        - Reset checkins data
+                    </div>
+                </li>
+            </ol>
+        </div>
+
+        <div class="demo-section success">
+            <h3>✅ Cách sử dụng</h3>
+            <ol>
+                <li>Truy cập màn hình <code>/manage</code></li>
+                <li>Click button <strong>"Xóa toàn bộ khách"</strong> (màu đỏ)</li>
+                <li>Xác nhận lần 1: Click "OK"</li>
+                <li>Xác nhận lần 2: Click "OK"</li>
+                <li>Nhập chính xác: <code>XÓA TẤT CẢ</code></li>
+                <li>Chờ thông báo hoàn thành</li>
+            </ol>
+        </div>
+
+        <div class="demo-section">
+            <h3>🔍 Code Implementation</h3>
+            <h4>Frontend (JavaScript):</h4>
+            <div class="code">
+async deleteAllUsers() {<br>
+&nbsp;&nbsp;// Triple confirmation<br>
+&nbsp;&nbsp;const confirm1 = confirm('⚠️ CẢNH BÁO...');<br>
+&nbsp;&nbsp;const confirm2 = confirm('⚠️ XÁC NHẬN LẦN CUỐI...');<br>
+&nbsp;&nbsp;const confirmText = prompt('Nhập "XÓA TẤT CẢ"...');<br>
+&nbsp;&nbsp;<br>
+&nbsp;&nbsp;// API call with error handling<br>
+&nbsp;&nbsp;const res = await fetch('/api/users/delete-all', {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;method: 'DELETE'<br>
+&nbsp;&nbsp;});<br>
+}
+            </div>
+            
+            <h4>Backend (Python):</h4>
+            <div class="code">
+@app.route('/api/users/delete-all', methods=['DELETE'])<br>
+def delete_all_users():<br>
+&nbsp;&nbsp;# Clear users database<br>
+&nbsp;&nbsp;data['users'] = []<br>
+&nbsp;&nbsp;<br>
+&nbsp;&nbsp;# Clear cache<br>
+&nbsp;&nbsp;ENCODING_CACHE = []<br>
+&nbsp;&nbsp;CENTROID_CACHE = []<br>
+&nbsp;&nbsp;<br>
+&nbsp;&nbsp;# Delete all images<br>
+&nbsp;&nbsp;shutil.rmtree('data/images')<br>
+&nbsp;&nbsp;<br>
+&nbsp;&nbsp;# Reset checkins<br>
+&nbsp;&nbsp;json.dump({'checkins': []}, checkins_file)
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h3>📊 Kết quả</h3>
+            <p>Sau khi xóa thành công, hệ thống sẽ:</p>
+            <ul>
+                <li>✅ Hiển thị số lượng khách và ảnh đã xóa</li>
+                <li>✅ Làm mới danh sách khách (rỗng)</li>
+                <li>✅ Đóng panel chỉnh sửa</li>
+                <li>✅ Reset về trạng thái ban đầu</li>
+            </ul>
+        </div>
+
+        <div class="demo-section warning">
+            <h3>🚨 Lưu ý quan trọng</h3>
+            <p><strong>Chỉ sử dụng chức năng này khi:</strong></p>
+            <ul>
+                <li>Bạn chắc chắn muốn xóa toàn bộ dữ liệu</li>
+                <li>Đã backup dữ liệu quan trọng (nếu cần)</li>
+                <li>Đang trong môi trường test/development</li>
+                <li>Muốn reset hoàn toàn hệ thống</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

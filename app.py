@@ -1036,6 +1036,60 @@ def delete_user(user_id):
     remove_user_from_cache(user_id)
     return jsonify({'status': 'ok'})
 
+@app.route('/api/users/delete-all', methods=['DELETE'])
+def delete_all_users():
+    """Xóa toàn bộ khách và dữ liệu hình ảnh"""
+    deleted_users = 0
+    deleted_images = 0
+    
+    with _users_lock:
+        data = load_users_json()
+        users = data.get('users', [])
+        
+        # Đếm số lượng ảnh sẽ bị xóa
+        for user in users:
+            images = user.get('images', [])
+            deleted_images += len(images)
+        
+        # Xóa tất cả users
+        data['users'] = []
+        save_users_json(data)
+        deleted_users = len(users)
+    
+    # Xóa toàn bộ cache
+    global ENCODING_CACHE, CENTROID_CACHE
+    ENCODING_CACHE = []
+    CENTROID_CACHE = []
+    
+    # Xóa tất cả ảnh trong thư mục data/images
+    import os
+    import shutil
+    images_dir = 'data/images'
+    if os.path.exists(images_dir):
+        try:
+            shutil.rmtree(images_dir)
+            os.makedirs(images_dir, exist_ok=True)
+            print(f'Đã xóa toàn bộ thư mục ảnh: {images_dir}')
+        except Exception as e:
+            print(f'Lỗi xóa thư mục ảnh: {e}')
+    
+    # Xóa dữ liệu checkins
+    checkins_file = 'data/db/checkins.json'
+    if os.path.exists(checkins_file):
+        try:
+            with open(checkins_file, 'w', encoding='utf-8') as f:
+                json.dump({'checkins': []}, f, ensure_ascii=False, indent=2)
+            print('Đã xóa toàn bộ dữ liệu checkins')
+        except Exception as e:
+            print(f'Lỗi xóa checkins: {e}')
+    
+    print(f'Đã xóa toàn bộ: {deleted_users} khách, {deleted_images} ảnh')
+    return jsonify({
+        'status': 'ok', 
+        'deleted_users': deleted_users, 
+        'deleted_images': deleted_images
+    })
+
 @app.route('/api/cache/rebuild', methods=['POST'])
 def rebuild_cache():
     # Chỉ rebuild nếu cache rỗng hoặc có vấn đề
