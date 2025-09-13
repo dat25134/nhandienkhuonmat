@@ -120,7 +120,10 @@ class CameraManager {
             if (!window.__faceApiModelsLoaded) {
                 const base = '/static/face-api/model';
                 try {
-                    await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+                    await Promise.all([
+                        faceapi.nets.tinyFaceDetector.loadFromUri(base),
+                        faceapi.nets.faceLandmark68Net.loadFromUri(base)
+                    ]);
                     window.__faceApiModelsLoaded = true;
                     this.faceApiLoaded = true;
                 } catch (e) {
@@ -280,7 +283,7 @@ class CameraManager {
                 const detections = await faceapi.detectAllFaces(this.video, new faceapi.TinyFaceDetectorOptions({
                     inputSize: 416,
                     scoreThreshold: 0.3
-                }));
+                })).withFaceLandmarks();
                 
                 this.drawFaces(detections);
                 
@@ -317,21 +320,93 @@ class CameraManager {
         const scaleX = this.overlay.width / videoWidth;
         const scaleY = this.overlay.height / videoHeight;
         
-        // Draw face rectangles
-        ctx.strokeStyle = '#22c55e';
-        ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
-        ctx.lineWidth = 3;
+        // Draw face contours - softer and thinner
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'; // Lighter white
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; // Very light fill
+        ctx.lineWidth = 1; // Thinner line
+        ctx.lineCap = 'round'; // Soft ends
+        ctx.lineJoin = 'round'; // Soft corners
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.3)'; // Soft glow
+        ctx.shadowBlur = 1;
         
         detections.forEach((detection, index) => {
-            const box = detection.box;
-            const x = box.x * scaleX;
-            const y = box.y * scaleY;
-            const width = box.width * scaleX;
-            const height = box.height * scaleY;
-            
-            // Draw rectangle
-            ctx.strokeRect(x, y, width, height);
-            ctx.fillRect(x, y, width, height);
+            if (detection.landmarks) {
+                const landmarks = detection.landmarks;
+                
+                // Vẽ đường viền hoàn chỉnh bao quanh toàn bộ khuôn mặt
+                ctx.beginPath();
+                
+                // Lấy jawline (từ cằm lên hai bên thái dương)
+                const jawline = landmarks.getJawOutline();
+                
+                // Bắt đầu từ điểm đầu tiên của jawline (thái dương trái)
+                const leftTemple = jawline[0];
+                ctx.moveTo(leftTemple.x * scaleX, leftTemple.y * scaleY);
+                
+                // Vẽ jawline từ trái sang phải
+                for (let i = 1; i < jawline.length; i++) {
+                    const point = jawline[i];
+                    ctx.lineTo(point.x * scaleX, point.y * scaleY);
+                }
+                
+                // Lấy thái dương phải (điểm cuối của jawline)
+                const rightTemple = jawline[jawline.length - 1];
+                
+                // Tạo đường cong mềm mại qua trán để hoàn thành đường viền khuôn mặt
+                const leftEyeBrow = landmarks.getLeftEyeBrow();
+                const rightEyeBrow = landmarks.getRightEyeBrow();
+                
+                if (leftEyeBrow && rightEyeBrow && leftEyeBrow.length > 0 && rightEyeBrow.length > 0) {
+                    // Sử dụng các điểm lông mày để tạo đường cong trán tự nhiên
+                    const leftBrowOuter = leftEyeBrow[0];
+                    const leftBrowCenter = leftEyeBrow[2];
+                    const rightBrowCenter = rightEyeBrow[2];
+                    const rightBrowOuter = rightEyeBrow[4];
+                    
+                    // Đường cong qua trán sử dụng nhiều điểm điều khiển
+                    ctx.quadraticCurveTo(
+                        rightBrowOuter.x * scaleX,
+                        rightBrowOuter.y * scaleY - 8, // Phía trên lông mày
+                        (rightBrowCenter.x + leftBrowCenter.x) / 2 * scaleX,
+                        Math.min(rightBrowCenter.y, leftBrowCenter.y) * scaleY - 12 // Điểm cao nhất của trán
+                    );
+                    
+                    ctx.quadraticCurveTo(
+                        leftBrowOuter.x * scaleX,
+                        leftBrowOuter.y * scaleY - 8, // Phía trên lông mày
+                        leftTemple.x * scaleX,
+                        leftTemple.y * scaleY
+                    );
+                } else {
+                    // Fallback: đường cong đơn giản nếu không có dữ liệu lông mày
+                    const centerX = (leftTemple.x + rightTemple.x) / 2;
+                    const centerY = Math.min(leftTemple.y, rightTemple.y) - 15;
+                    
+                    ctx.quadraticCurveTo(
+                        centerX * scaleX,
+                        centerY * scaleY,
+                        leftTemple.x * scaleX,
+                        leftTemple.y * scaleY
+                    );
+                }
+                
+                ctx.closePath();
+                ctx.stroke();
+                
+            } else {
+                // Fallback: vẽ khung chữ nhật bo tròn nếu không có landmarks
+                const box = detection.box;
+                const x = box.x * scaleX;
+                const y = box.y * scaleY;
+                const width = box.width * scaleX;
+                const height = box.height * scaleY;
+                
+                // Vẽ hình chữ nhật bo tròn
+                const radius = 8;
+                ctx.beginPath();
+                ctx.roundRect(x, y, width, height, radius);
+                ctx.stroke();
+            }
         });
     }
     
