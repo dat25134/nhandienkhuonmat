@@ -275,7 +275,8 @@ def add_user():
                 'gender': gender,
                 'company': company,
                 'department': department,
-                'position': position
+                'position': position,
+                'seat_number': seat_number
             })
             users_data['users'] = users
             save_users_json(users_data)
@@ -606,6 +607,7 @@ def add_user_multi():
     company = sanitize_text(data.get('company', ''))
     department = sanitize_text(data.get('department', ''))
     position = sanitize_text(data.get('position', ''))
+    seat_number = sanitize_text(data.get('seat_number', ''))
 
     if not name:
         return jsonify({'error': 'Tên không được để trống'}), 400
@@ -648,7 +650,8 @@ def add_user_multi():
                 'gender': gender,
                 'company': company,
                 'department': department,
-                'position': position
+                'position': position,
+                'seat_number': seat_number
             })
             users_data['users'] = users
             save_users_json(users_data)
@@ -704,7 +707,8 @@ def add_user_upload():
                 'gender': gender,
                 'company': company,
                 'department': department,
-                'position': position
+                'position': position,
+                'seat_number': seat_number
             })
             users_data['users'] = users
             save_users_json(users_data)
@@ -914,7 +918,7 @@ def text_to_speech():
 @app.route('/api/users/<int:user_id>/profile', methods=['PUT'])
 def update_profile(user_id):
     data = request.json or {}
-    allowed = ['name', 'phone', 'gender', 'company', 'department', 'position']
+    allowed = ['name', 'phone', 'gender', 'company', 'department', 'position', 'seat_number']
     update_fields = {k: sanitize_text(v if k != 'phone' else normalize_phone(v)) for k, v in data.items() if k in allowed}
     if not update_fields:
         return jsonify({'error': 'No fields to update'}), 400
@@ -1085,6 +1089,7 @@ def checkin_user(user_id):
             'company': sanitize_text(payload.get('company', '')),
             'department': sanitize_text(payload.get('department', '')),
             'position': sanitize_text(payload.get('position', '')),
+            'seat_number': sanitize_text(payload.get('seat_number', '')),
             'checked_at': now_iso,
         }
         lst.append(entry)
@@ -1147,7 +1152,7 @@ def import_excel():
             headers.append(ws.cell(row=1, column=col).value)
         
         # Kiểm tra headers bắt buộc
-        required_headers = ['Họ và tên', 'Số điện thoại']
+        required_headers = ['Họ và tên', 'Số điện thoại', 'Số ghế']
         header_mapping = {}
         for i, header in enumerate(headers):
             if header in required_headers:
@@ -1161,6 +1166,7 @@ def import_excel():
         col_mapping = {
             'name': header_mapping.get('Họ và tên', 0),
             'phone': header_mapping.get('Số điện thoại', 0),
+            'seat_number': header_mapping.get('Số ghế', 0),
             'gender': next((i+1 for i, h in enumerate(headers) if h == 'Giới tính'), 0),
             'company': next((i+1 for i, h in enumerate(headers) if h == 'Công ty'), 0),
             'department': next((i+1 for i, h in enumerate(headers) if h == 'Bộ phận'), 0),
@@ -1177,26 +1183,36 @@ def import_excel():
                 # Lấy dữ liệu từ Excel
                 name = ws.cell(row=row, column=col_mapping['name']).value
                 phone = ws.cell(row=row, column=col_mapping['phone']).value
+                seat_number = ws.cell(row=row, column=col_mapping['seat_number']).value
                 
                 # Kiểm tra dữ liệu bắt buộc
-                if not name or not phone:
+                if not name or not phone or not seat_number:
                     skipped_count += 1
-                    errors.append(f"Dòng {row}: Thiếu tên hoặc số điện thoại")
+                    errors.append(f"Dòng {row}: Thiếu tên, số điện thoại hoặc số ghế")
                     continue
                 
                 # Chuẩn hóa dữ liệu
                 name = str(name).strip()
                 phone = normalize_phone(str(phone).strip())
+                seat_number = str(seat_number).strip()
                 gender = str(ws.cell(row=row, column=col_mapping['gender']).value or '').strip()
                 company = str(ws.cell(row=row, column=col_mapping['company']).value or '').strip()
                 department = str(ws.cell(row=row, column=col_mapping['department']).value or '').strip()
                 position = str(ws.cell(row=row, column=col_mapping['position']).value or '').strip()
                 
-                # Kiểm tra trùng lặp số điện thoại
+                # Chuẩn hóa số ghế
+                seat_number = sanitize_text(seat_number)
+                
+                # Kiểm tra trùng lặp số điện thoại và số ghế
                 existing_users = load_users_json().get('users', [])
                 if any(u.get('phone') == phone for u in existing_users):
                     skipped_count += 1
                     errors.append(f"Dòng {row}: Số điện thoại {phone} đã tồn tại")
+                    continue
+                
+                if any(u.get('seat_number') == seat_number for u in existing_users):
+                    skipped_count += 1
+                    errors.append(f"Dòng {row}: Số ghế {seat_number} đã được sử dụng")
                     continue
                 
                 # Tạo user mới
@@ -1208,6 +1224,7 @@ def import_excel():
                     'company': company,
                     'department': department,
                     'position': position,
+                    'seat_number': seat_number,
                     'images': []  # Ảnh sẽ được thêm sau
                 }
                 
@@ -1247,11 +1264,12 @@ def search_users():
         users = users_data.get('users', [])
         
         if query:
-            # Tìm kiếm theo tên, phone, company
+            # Tìm kiếm theo tên, phone, company, seat_number
             filtered_users = [u for u in users if 
                             query in (u.get('name', '')).lower() or
                             query in (u.get('phone', '')).lower() or
-                            query in (u.get('company', '')).lower()]
+                            query in (u.get('company', '')).lower() or
+                            query in (u.get('seat_number', '')).lower()]
         else:
             filtered_users = users
         
@@ -1265,7 +1283,8 @@ def search_users():
                 'company': user.get('company', ''),
                 'department': user.get('department', ''),
                 'position': user.get('position', ''),
-                'gender': user.get('gender', '')
+                'gender': user.get('gender', ''),
+                'seat_number': user.get('seat_number', '')
             })
         
         return jsonify({'users': result})
@@ -1314,6 +1333,7 @@ def manual_checkin():
             'company': user.get('company', ''),
             'department': user.get('department', ''),
             'position': user.get('position', ''),
+            'seat_number': user.get('seat_number', ''),
             'date': today,
             'checked_at': datetime.now().isoformat(),
             'method': 'manual'  # Đánh dấu là checkin thủ công

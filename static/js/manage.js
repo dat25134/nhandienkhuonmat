@@ -41,7 +41,7 @@ class ManageApp {
     render() {
         const kw = (this.search.value || '').toLowerCase();
         const list = (this.all || []).filter(u => {
-            const hay = `${u.name||''} ${u.phone||''} ${u.company||''}`.toLowerCase();
+            const hay = `${u.name||''} ${u.phone||''} ${u.company||''} ${u.seat_number||''}`.toLowerCase();
             return !kw || hay.includes(kw);
         });
         if (!list.length) {
@@ -52,7 +52,7 @@ class ManageApp {
             <div class="user-item">
                 <div class="user-info">
                     <h4>${u.name || '(Không tên)'} — ${u.phone || ''}</h4>
-                    <p>${u.company || ''} ${u.department?('- '+u.department):''} ${u.position?('- '+u.position):''}</p>
+                    <p>${u.company || ''} ${u.department?('- '+u.department):''} ${u.position?('- '+u.position):''} ${u.seat_number?('- Ghế: '+u.seat_number):''}</p>
                 </div>
                 <div>
                     <button class="btn btn-primary" data-id="${u.id}">Sửa</button>
@@ -76,6 +76,7 @@ class ManageApp {
         document.getElementById('editCompany').value = u.company || '';
         document.getElementById('editDepartment').value = u.department || '';
         document.getElementById('editPosition').value = u.position || '';
+        document.getElementById('editSeatNumber').value = u.seat_number || '';
         this.renderImages(u.images || []);
     }
 
@@ -104,21 +105,48 @@ class ManageApp {
 
     async saveProfile() {
         if (!this.editingId) return;
+        
+        const name = document.getElementById('editName').value.trim();
+        const phone = document.getElementById('editPhone').value.trim();
+        const seatNumber = document.getElementById('editSeatNumber').value.trim();
+        
+        // Validation
+        if (!name) {
+            alert('Vui lòng nhập tên');
+            return;
+        }
+        if (!phone) {
+            alert('Vui lòng nhập số điện thoại');
+            return;
+        }
+        if (!seatNumber) {
+            alert('Vui lòng nhập số ghế');
+            return;
+        }
+        
         const payload = {
-            name: document.getElementById('editName').value.trim(),
-            phone: document.getElementById('editPhone').value.trim(),
+            name: name,
+            phone: phone,
             gender: document.getElementById('editGender').value.trim(),
             company: document.getElementById('editCompany').value.trim(),
             department: document.getElementById('editDepartment').value.trim(),
             position: document.getElementById('editPosition').value.trim(),
+            seat_number: seatNumber,
         };
-        await fetch(`/api/users/${this.editingId}/profile`, {
+        
+        const response = await fetch(`/api/users/${this.editingId}/profile`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        alert('Đã lưu hồ sơ');
-        this.loadUsers();
+        
+        if (response.ok) {
+            alert('Đã lưu hồ sơ');
+            this.loadUsers();
+        } else {
+            const error = await response.json();
+            alert(`Lỗi: ${error.error || 'Không thể lưu hồ sơ'}`);
+        }
     }
 
     async uploadImages() {

@@ -6,6 +6,7 @@ class TrainingApp {
         this.userCompany = document.getElementById('userCompany');
         this.userDepartment = document.getElementById('userDepartment');
         this.userPosition = document.getElementById('userPosition');
+        this.userSeatNumber = document.getElementById('userSeatNumber');
         this.captureButton = document.getElementById('captureFace');
         this.clearCapturedButton = document.getElementById('clearCaptured');
         this.saveButton = document.getElementById('saveUser');
@@ -41,10 +42,11 @@ class TrainingApp {
     
     validateForm() {
         const hasName = this.userNameInput.value.trim() !== '';
+        const hasSeatNumber = this.userSeatNumber.value.trim() !== '';
         const hasAllRequiredImages = this.capturedImages.front && this.capturedImages.left && this.capturedImages.right;
         const hasUploadedImages = this.uploadedImages && this.uploadedImages.length > 0;
         
-        this.saveButton.disabled = !(hasName && (hasAllRequiredImages || hasUploadedImages));
+        this.saveButton.disabled = !(hasName && hasSeatNumber && (hasAllRequiredImages || hasUploadedImages));
         
         // Cập nhật trạng thái các ảnh cần chụp
         this.updateImageStatus();
@@ -178,6 +180,11 @@ class TrainingApp {
             return;
         }
         
+        if (!this.userSeatNumber.value.trim()) {
+            this.showError('Vui lòng nhập số ghế');
+            return;
+        }
+        
         this.saveButton.disabled = true;
         this.saveButton.textContent = 'Đang lưu...';
         
@@ -209,7 +216,8 @@ class TrainingApp {
                     gender: (this.userGender?.value || '').trim(),
                     company: (this.userCompany?.value || '').trim(),
                     department: (this.userDepartment?.value || '').trim(),
-                    position: (this.userPosition?.value || '').trim()
+                    position: (this.userPosition?.value || '').trim(),
+                    seat_number: (this.userSeatNumber?.value || '').trim()
                 })
             });
             
@@ -251,6 +259,7 @@ class TrainingApp {
     
     resetForm() {
         this.userNameInput.value = '';
+        this.userSeatNumber.value = '';
         this.capturedImages = {
             front: null,
             left: null,

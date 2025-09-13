@@ -50,6 +50,7 @@
                     c.company = c.company || u.company || '';
                     c.position = c.position || u.position || '';
                     c.gender = c.gender || u.gender || '';
+                    c.seat_number = c.seat_number || u.seat_number || '';
                 }
             } catch(_){}
             out.push({
@@ -59,6 +60,7 @@
                 gender: c.gender || '',
                 position: c.position || '',
                 company: c.company || '',
+                seat_number: c.seat_number || '',
                 time: new Date(c.checked_at),
                 imageUrl: resolveImageUrl(img)
             });
@@ -77,7 +79,7 @@
                 <div>
                     <div class="recent-label">ĐẠI BIỂU</div>
                     <div class="recent-name">${i.name}</div>
-                    <div class="recent-meta">${i.position || 'Khách mời'} · ${i.company || ''}</div>
+                    <div class="recent-meta">${i.position || 'Khách mời'} · ${i.company || ''}${i.seat_number ? ` · Ghế: ${i.seat_number}` : ''}</div>
                 </div>
             </li>
         `).join('');
@@ -100,7 +102,7 @@
                         <div class="subline">Chào mừng đại biểu</div>
                         <div class="title-large">${titleByGender(item.gender)} ${item.name}</div>
                         <div class="subline">Về dự đại hội đại biểu Đảng bộ lần thứ I</div>
-                        <div class="meta">${item.position || 'Khách mời'} · ${item.company || ''}</div>
+                        <div class="meta">${item.position || 'Khách mời'} · ${item.company || ''}${item.seat_number ? ` · Ghế: ${item.seat_number}` : ''}</div>
                     </div>
                 </div>
             </div>`;

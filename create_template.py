@@ -24,6 +24,7 @@ def create_excel_template():
         "Công ty",
         "Bộ phận", 
         "Vị trí",
+        "Số ghế",
         "Ghi chú"
     ]
     
@@ -42,9 +43,9 @@ def create_excel_template():
     
     # Thêm dữ liệu mẫu
     sample_data = [
-        [1, "Nguyễn Văn A", "0123456789", "Nam", "Công ty ABC", "IT", "Nhân viên", "Khách VIP"],
-        [2, "Trần Thị B", "0987654321", "Nữ", "Công ty XYZ", "HR", "Trưởng phòng", ""],
-        [3, "Lê Văn C", "0369258147", "Nam", "Công ty DEF", "Marketing", "Chuyên viên", "Khách mới"]
+        [1, "Nguyễn Văn A", "0123456789", "Nam", "Công ty ABC", "IT", "Nhân viên", "A01", "Khách VIP"],
+        [2, "Trần Thị B", "0987654321", "Nữ", "Công ty XYZ", "HR", "Trưởng phòng", "A02", ""],
+        [3, "Lê Văn C", "0369258147", "Nam", "Công ty DEF", "Marketing", "Chuyên viên", "B01", "Khách mới"]
     ]
     
     for row_idx, row_data in enumerate(sample_data, 2):
@@ -60,24 +61,25 @@ def create_excel_template():
                 cell.alignment = Alignment(horizontal="center")
     
     # Điều chỉnh độ rộng cột
-    column_widths = [8, 25, 15, 12, 20, 15, 15, 20]
+    column_widths = [8, 25, 15, 12, 20, 15, 15, 12, 20]
     for col, width in enumerate(column_widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     
     # Thêm hướng dẫn ở dòng cuối
     instruction_row = len(sample_data) + 3
-    ws.merge_cells(f'A{instruction_row}:H{instruction_row}')
+    ws.merge_cells(f'A{instruction_row}:I{instruction_row}')
     instruction_cell = ws.cell(row=instruction_row, column=1, value="HƯỚNG DẪN:")
     instruction_cell.font = Font(bold=True, color="FF0000")
     instruction_cell.alignment = Alignment(horizontal="left")
     
     instructions = [
         "1. Điền thông tin khách vào các dòng bên dưới",
-        "2. Cột 'Họ và tên' và 'Số điện thoại' là bắt buộc",
+        "2. Cột 'Họ và tên', 'Số điện thoại' và 'Số ghế' là bắt buộc",
         "3. Cột 'Giới tính' nhập: Nam, Nữ, hoặc Khác",
-        "4. Các cột khác có thể để trống",
-        "5. Lưu file và upload lên hệ thống",
-        "6. Ảnh sẽ được cập nhật sau khi import xong"
+        "4. Cột 'Số ghế' nhập theo format: A01, B05, C12...",
+        "5. Các cột khác có thể để trống",
+        "6. Lưu file và upload lên hệ thống",
+        "7. Ảnh sẽ được cập nhật sau khi import xong"
     ]
     
     for i, instruction in enumerate(instructions, 1):

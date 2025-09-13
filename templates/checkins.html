@@ -135,6 +135,7 @@
                             ${user.company ? `🏢 ${user.company}` : ''}
                             ${user.department ? ` - ${user.department}` : ''}
                             ${user.position ? ` - ${user.position}` : ''}
+                            ${user.seat_number ? ` - 🪑 Ghế: ${user.seat_number}` : ''}
                         </div>
                     </div>
                     <button id="btn-${user.id}" onclick="manualCheckin(${user.id})" 
@@ -230,7 +231,7 @@
                 <div class="user-item">
                     <div class="user-info">
                         <h4>${c.name || '(Không tên)'} — ${c.phone || ''}</h4>
-                        <p>${c.company || ''} ${c.department ? ('- ' + c.department) : ''} ${c.position ? ('- ' + c.position) : ''}</p>
+                        <p>${c.company || ''} ${c.department ? ('- ' + c.department) : ''} ${c.position ? ('- ' + c.position) : ''} ${c.seat_number ? ('- Ghế: ' + c.seat_number) : ''}</p>
                     </div>
                     <div>${new Date(c.checked_at).toLocaleString('vi-VN')}</div>
                 </div>
