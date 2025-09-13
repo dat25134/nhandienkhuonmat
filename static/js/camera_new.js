@@ -10,6 +10,7 @@ class CameraManager {
         this.cameras = [];
         this.detecting = false;
         this.faceApiLoaded = false;
+        this.currentFaceAngle = 'unknown'; // Lưu góc khuôn mặt hiện tại
         
         this.init();
     }
@@ -255,6 +256,11 @@ class CameraManager {
         
         return this.canvas.toDataURL('image/jpeg', 0.8);
     }
+    
+    // Lấy góc khuôn mặt hiện tại
+    getCurrentFaceAngle() {
+        return this.currentFaceAngle;
+    }
 
     setupOverlay() {
         const rect = this.video.getBoundingClientRect();
@@ -305,6 +311,57 @@ class CameraManager {
         detectFaces();
     }
     
+    // Hàm phát hiện góc khuôn mặt
+    detectFaceAngle(landmarks) {
+        if (!landmarks) return 'unknown';
+        
+        try {
+            // Lấy các điểm mũi để tính góc quay
+            const nose = landmarks.getNose();
+            const leftEye = landmarks.getLeftEye();
+            const rightEye = landmarks.getRightEye();
+            
+            if (nose.length < 3 || leftEye.length < 3 || rightEye.length < 3) {
+                return 'unknown';
+            }
+            
+            // Điểm mũi chính (đầu mũi)
+            const noseTip = nose[3];
+            
+            // Điểm mũi trái và phải
+            const noseLeft = nose[0];
+            const noseRight = nose[4];
+            
+            // Điểm mắt trái và phải
+            const leftEyeCenter = {
+                x: leftEye.reduce((sum, p) => sum + p.x, 0) / leftEye.length,
+                y: leftEye.reduce((sum, p) => sum + p.y, 0) / leftEye.length
+            };
+            const rightEyeCenter = {
+                x: rightEye.reduce((sum, p) => sum + p.x, 0) / rightEye.length,
+                y: rightEye.reduce((sum, p) => sum + p.y, 0) / rightEye.length
+            };
+            
+            // Tính toán góc quay dựa trên vị trí mũi so với trung tâm mắt
+            const eyeCenterX = (leftEyeCenter.x + rightEyeCenter.x) / 2;
+            const noseOffset = noseTip.x - eyeCenterX;
+            const eyeDistance = rightEyeCenter.x - leftEyeCenter.x;
+            const angleRatio = noseOffset / (eyeDistance / 2);
+            
+            // Phân loại góc dựa trên tỷ lệ
+            if (angleRatio < -0.3) {
+                return 'left'; // Quay trái
+            } else if (angleRatio > 0.3) {
+                return 'right'; // Quay phải
+            } else {
+                return 'front'; // Chính diện
+            }
+        } catch (error) {
+            console.warn('Lỗi phát hiện góc khuôn mặt:', error);
+            return 'unknown';
+        }
+    }
+
     drawFaces(detections) {
         const ctx = this.overlay.getContext('2d');
         if (!ctx) return;
@@ -332,6 +389,9 @@ class CameraManager {
         detections.forEach((detection, index) => {
             if (detection.landmarks) {
                 const landmarks = detection.landmarks;
+                
+                // Phát hiện góc khuôn mặt
+                this.currentFaceAngle = this.detectFaceAngle(landmarks);
                 
                 // Vẽ đường viền hoàn chỉnh bao quanh toàn bộ khuôn mặt
                 ctx.beginPath();

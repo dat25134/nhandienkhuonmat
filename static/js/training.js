@@ -12,7 +12,11 @@ class TrainingApp {
         this.resultContainer = document.getElementById('trainingResult');
         this.resultContent = document.getElementById('trainingContent');
         
-        this.capturedImages = [];
+        this.capturedImages = {
+            front: null,  // Ảnh chính diện
+            left: null,   // Ảnh quay trái
+            right: null   // Ảnh quay phải
+        };
         this.uploadedImages = [];
         
         this.init();
@@ -37,60 +41,141 @@ class TrainingApp {
     
     validateForm() {
         const hasName = this.userNameInput.value.trim() !== '';
-        const hasAnyImage = (this.capturedImages && this.capturedImages.length > 0) || (this.uploadedImages && this.uploadedImages.length > 0);
+        const hasAllRequiredImages = this.capturedImages.front && this.capturedImages.left && this.capturedImages.right;
+        const hasUploadedImages = this.uploadedImages && this.uploadedImages.length > 0;
         
-        this.saveButton.disabled = !(hasName && hasAnyImage);
+        this.saveButton.disabled = !(hasName && (hasAllRequiredImages || hasUploadedImages));
+        
+        // Cập nhật trạng thái các ảnh cần chụp
+        this.updateImageStatus();
+    }
+    
+    updateImageStatus() {
+        // Tạo hoặc cập nhật UI hiển thị trạng thái 3 ảnh cần chụp
+        let statusContainer = document.getElementById('imageStatus');
+        if (!statusContainer) {
+            statusContainer = document.createElement('div');
+            statusContainer.id = 'imageStatus';
+            statusContainer.style.cssText = 'margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 8px;';
+            this.captureButton.parentNode.insertBefore(statusContainer, this.captureButton);
+        }
+        
+        const statusHTML = `
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center;">
+                <div style="padding: 8px; border-radius: 6px; ${this.capturedImages.front ? 'background: #d4edda; color: #155724;' : 'background: #f8d7da; color: #721c24;'}">
+                    <strong>Chính diện</strong><br>
+                    ${this.capturedImages.front ? '✅ Đã chụp' : '❌ Chưa chụp'}
+                </div>
+                <div style="padding: 8px; border-radius: 6px; ${this.capturedImages.left ? 'background: #d4edda; color: #155724;' : 'background: #f8d7da; color: #721c24;'}">
+                    <strong>Quay trái</strong><br>
+                    ${this.capturedImages.left ? '✅ Đã chụp' : '❌ Chưa chụp'}
+                </div>
+                <div style="padding: 8px; border-radius: 6px; ${this.capturedImages.right ? 'background: #d4edda; color: #155724;' : 'background: #f8d7da; color: #721c24;'}">
+                    <strong>Quay phải</strong><br>
+                    ${this.capturedImages.right ? '✅ Đã chụp' : '❌ Chưa chụp'}
+                </div>
+            </div>
+        `;
+        
+        statusContainer.innerHTML = statusHTML;
     }
     
     captureFace() {
-        
         if (!window.cameraTest || !window.cameraTest.stream) {
             this.showError('Vui lòng bật camera trước khi chụp khuôn mặt');
             return;
         }
         
         try {
-            const img = window.cameraTest.captureImage();
+            // Lấy góc khuôn mặt hiện tại
+            const currentAngle = window.cameraTest.getCurrentFaceAngle();
             
-            if (this.capturedImages.length >= 5) {
-                this.showError('Bạn đã chụp tối đa 5 ảnh');
+            if (currentAngle === 'unknown') {
+                this.showError('Không thể phát hiện góc khuôn mặt. Vui lòng đảm bảo khuôn mặt rõ ràng trong khung hình.');
                 return;
             }
-            this.capturedImages.push(img);
+            
+            // Kiểm tra xem góc này đã được chụp chưa
+            if (this.capturedImages[currentAngle]) {
+                this.showError(`Ảnh góc ${this.getAngleDisplayName(currentAngle)} đã được chụp rồi!`);
+                return;
+            }
+            
+            const img = window.cameraTest.captureImage();
+            this.capturedImages[currentAngle] = img;
+            
             this.renderCapturedPreview();
             this.validateForm();
-            this.showSuccess('Đã chụp khuôn mặt!');
+            this.showSuccess(`Đã chụp ảnh ${this.getAngleDisplayName(currentAngle)}!`);
+            
         } catch (error) {
             console.error('Lỗi chụp khuôn mặt:', error);
             this.showError('Lỗi khi chụp khuôn mặt: ' + error.message);
         }
     }
     
+    getAngleDisplayName(angle) {
+        const names = {
+            'front': 'chính diện',
+            'left': 'quay trái',
+            'right': 'quay phải'
+        };
+        return names[angle] || angle;
+    }
+    
     renderCapturedPreview() {
         const old = document.querySelector('.captured-preview');
         if (old) old.remove();
-        if (!this.capturedImages || this.capturedImages.length === 0) return;
+        
+        // Kiểm tra xem có ảnh nào được chụp không
+        const hasAnyImage = this.capturedImages.front || this.capturedImages.left || this.capturedImages.right;
+        if (!hasAnyImage) return;
 
         const wrap = document.createElement('div');
         wrap.className = 'captured-preview';
-        wrap.style.cssText = 'margin: 10px 0; display:flex; gap:8px; flex-wrap:wrap;';
+        wrap.style.cssText = 'margin: 10px 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;';
 
-        this.capturedImages.forEach(src => {
-            const img = document.createElement('img');
-            img.src = src;
-            img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:6px;border:2px solid #27ae60;';
-            wrap.appendChild(img);
+        // Hiển thị 3 ảnh theo góc
+        const angles = ['front', 'left', 'right'];
+        angles.forEach(angle => {
+            const container = document.createElement('div');
+            container.style.cssText = 'text-align: center; padding: 8px; border-radius: 8px; background: #f8f9fa;';
+            
+            const label = document.createElement('div');
+            label.textContent = this.getAngleDisplayName(angle);
+            label.style.cssText = 'font-weight: bold; margin-bottom: 5px; color: #495057;';
+            container.appendChild(label);
+            
+            if (this.capturedImages[angle]) {
+                const img = document.createElement('img');
+                img.src = this.capturedImages[angle];
+                img.style.cssText = 'width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 2px solid #27ae60;';
+                container.appendChild(img);
+            } else {
+                const placeholder = document.createElement('div');
+                placeholder.textContent = 'Chưa chụp';
+                placeholder.style.cssText = 'width: 80px; height: 80px; background: #e9ecef; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #6c757d; font-size: 12px; margin: 0 auto;';
+                container.appendChild(placeholder);
+            }
+            
+            wrap.appendChild(container);
         });
 
         this.captureButton.parentNode.appendChild(wrap);
     }
     
     async saveUser() {
-        if ((!(this.capturedImages && this.capturedImages.length > 0)) || !this.userNameInput.value.trim()) {
-            if (!(this.uploadedImages && this.uploadedImages.length > 0) || !this.userNameInput.value.trim()) {
-                this.showError('Vui lòng nhập tên và chụp hoặc upload ít nhất 1 ảnh');
-                return;
-            }
+        const hasAllRequiredImages = this.capturedImages.front && this.capturedImages.left && this.capturedImages.right;
+        const hasUploadedImages = this.uploadedImages && this.uploadedImages.length > 0;
+        
+        if (!hasAllRequiredImages && !hasUploadedImages) {
+            this.showError('Vui lòng chụp đủ 3 ảnh (chính diện, quay trái, quay phải) hoặc upload ảnh');
+            return;
+        }
+        
+        if (!this.userNameInput.value.trim()) {
+            this.showError('Vui lòng nhập tên người dùng');
+            return;
         }
         
         this.saveButton.disabled = true;
@@ -98,7 +183,15 @@ class TrainingApp {
         
         try {
             const images = [];
-            if (this.capturedImages && this.capturedImages.length > 0) images.push(...this.capturedImages);
+            
+            // Thêm 3 ảnh đã chụp theo góc
+            if (hasAllRequiredImages) {
+                images.push(this.capturedImages.front);
+                images.push(this.capturedImages.left);
+                images.push(this.capturedImages.right);
+            }
+            
+            // Thêm ảnh upload nếu có
             if (this.uploadedImages && this.uploadedImages.length > 0) {
                 const remain = 5 - images.length;
                 if (remain > 0) images.push(...this.uploadedImages.slice(0, remain));
@@ -158,7 +251,11 @@ class TrainingApp {
     
     resetForm() {
         this.userNameInput.value = '';
-        this.capturedImages = [];
+        this.capturedImages = {
+            front: null,
+            left: null,
+            right: null
+        };
         this.uploadedImages = [];
         this.validateForm();
         
@@ -167,7 +264,11 @@ class TrainingApp {
     }
 
     clearCaptured() {
-        this.capturedImages = [];
+        this.capturedImages = {
+            front: null,
+            left: null,
+            right: null
+        };
         const preview = document.querySelector('.captured-preview');
         if (preview) preview.remove();
         this.validateForm();
