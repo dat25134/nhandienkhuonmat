@@ -18,6 +18,19 @@
         </header>
 
         <main>
+            <!-- Chức năng checkin thủ công -->
+            <div class="manual-checkin-section" style="margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
+                <h2 style="margin-bottom: 15px; color: #2c3e50;">Check-in thủ công</h2>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
+                    <input id="userSearch" type="text" placeholder="Tìm kiếm theo tên, số điện thoại, công ty..." 
+                           style="flex: 1; min-width: 300px; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                    <button id="searchBtn" class="btn btn-primary">Tìm kiếm</button>
+                </div>
+                <div id="searchResults" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; background: white; display: none;">
+                    <!-- Kết quả tìm kiếm sẽ hiển thị ở đây -->
+                </div>
+            </div>
+
             <div class="users-section">
                 <h2 style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
                     <span>Khách đã check-in (mỗi khách chỉ 1 lần mới nhất)</span>
@@ -41,6 +54,170 @@
         async function loadCheckins() {
             const res = await fetch('/api/checkins');
             return await res.json();
+        }
+
+        async function searchUsers(query) {
+            const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+            return await res.json();
+        }
+
+        async function manualCheckin(userId) {
+            try {
+                const res = await fetch('/api/manual-checkin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ user_id: userId })
+                });
+                
+                const result = await res.json();
+                
+                if (res.ok) {
+                    showMessage(result.message, 'success');
+                    updateUserButton(userId, true); // Cập nhật button thành "Đã check-in"
+                    refresh(); // Refresh danh sách checkin
+                    // Không ẩn kết quả search để có thể checkin tiếp
+                } else {
+                    // Hiển thị thông báo chi tiết hơn
+                    const message = result.message || result.error;
+                    showMessage(message, 'error');
+                    
+                    // Nếu đã checkin rồi, cập nhật button
+                    if (result.error === 'Khách đã checkin') {
+                        updateUserButton(userId, true);
+                    }
+                }
+            } catch (error) {
+                showMessage('Lỗi kết nối server', 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: bold;
+                z-index: 1000;
+                max-width: 300px;
+                ${type === 'success' ? 'background: #28a745;' : 'background: #dc3545;'}
+            `;
+            messageDiv.textContent = message;
+            document.body.appendChild(messageDiv);
+            
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 3000);
+        }
+
+        function renderSearchResults(users) {
+            const container = document.getElementById('searchResults');
+            
+            if (!users || users.length === 0) {
+                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">Không tìm thấy kết quả</div>';
+                container.style.display = 'block';
+                return;
+            }
+            
+            const html = users.map(user => `
+                <div id="user-${user.id}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer;" 
+                     onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                     onmouseout="this.style.backgroundColor='white'">
+                    <div>
+                        <div style="font-weight: bold; color: #2c3e50;">${user.name || '(Không tên)'}</div>
+                        <div style="font-size: 14px; color: #6c757d;">
+                            ${user.phone ? `📞 ${user.phone}` : ''} 
+                            ${user.company ? `🏢 ${user.company}` : ''}
+                            ${user.department ? ` - ${user.department}` : ''}
+                            ${user.position ? ` - ${user.position}` : ''}
+                        </div>
+                    </div>
+                    <button id="btn-${user.id}" onclick="manualCheckin(${user.id})" 
+                            style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        Check-in
+                    </button>
+                </div>
+            `).join('');
+            
+            container.innerHTML = html;
+            container.style.display = 'block';
+        }
+
+        // Cập nhật trạng thái button sau khi checkin
+        function updateUserButton(userId, isCheckedIn = true) {
+            const button = document.getElementById(`btn-${userId}`);
+            if (button) {
+                if (isCheckedIn) {
+                    button.textContent = 'Đã check-in';
+                    button.style.background = '#28a745';
+                    button.disabled = true;
+                } else {
+                    button.textContent = 'Check-in';
+                    button.style.background = '#007bff';
+                    button.disabled = false;
+                }
+            }
+        }
+
+        function hideSearchResults() {
+            const container = document.getElementById('searchResults');
+            container.style.display = 'none';
+        }
+
+        // Debounce function để tránh call API liên tục
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Tạo debounced search function
+        const debouncedSearch = debounce(async (query) => {
+            if (query.length < 2) {
+                hideSearchResults();
+                return;
+            }
+            
+            try {
+                const result = await searchUsers(query);
+                renderSearchResults(result.users);
+                // Kiểm tra trạng thái checkin của từng user
+                checkCheckinStatus(result.users);
+            } catch (error) {
+                showMessage('Lỗi tìm kiếm', 'error');
+            }
+        }, 300); // Delay 300ms
+
+        // Kiểm tra trạng thái checkin của users
+        async function checkCheckinStatus(users) {
+            if (!users || users.length === 0) return;
+            
+            try {
+                // Lấy danh sách checkin hiện tại
+                const checkins = await loadCheckins();
+                const today = new Date().toISOString().split('T')[0];
+                
+                // Cập nhật button cho từng user
+                users.forEach(user => {
+                    const hasCheckedIn = checkins.some(checkin => 
+                        checkin.user_id === user.id && checkin.date === today
+                    );
+                    updateUserButton(user.id, hasCheckedIn);
+                });
+            } catch (error) {
+                console.warn('Không thể kiểm tra trạng thái checkin:', error);
+            }
         }
 
         function render(list) {
@@ -84,6 +261,49 @@
             const update = () => render(applyFilters(all));
             search.addEventListener('input', update);
             gender.addEventListener('change', update);
+            
+            // Event listeners cho checkin thủ công
+            const userSearch = document.getElementById('userSearch');
+            const searchBtn = document.getElementById('searchBtn');
+            
+            // Tìm kiếm real-time khi gõ phím
+            userSearch.addEventListener('input', (e) => {
+                const query = e.target.value.trim();
+                debouncedSearch(query);
+            });
+            
+            // Tìm kiếm khi click button
+            searchBtn.addEventListener('click', async () => {
+                const query = userSearch.value.trim();
+                if (query.length < 2) {
+                    showMessage('Vui lòng nhập ít nhất 2 ký tự để tìm kiếm', 'error');
+                    return;
+                }
+                
+                try {
+                    const result = await searchUsers(query);
+                    renderSearchResults(result.users);
+                    // Kiểm tra trạng thái checkin của từng user
+                    checkCheckinStatus(result.users);
+                } catch (error) {
+                    showMessage('Lỗi tìm kiếm', 'error');
+                }
+            });
+            
+            // Tìm kiếm khi nhấn Enter
+            userSearch.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    searchBtn.click();
+                }
+            });
+            
+            // Ẩn kết quả khi click ra ngoài
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.manual-checkin-section')) {
+                    hideSearchResults();
+                }
+            });
+            
             const clearBtn = document.getElementById('clearBtn');
             clearBtn.addEventListener('click', async () => {
                 if (!confirm('Bạn có chắc muốn xóa toàn bộ danh sách check-in?')) return;

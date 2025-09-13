@@ -1238,6 +1238,101 @@ def import_excel():
     except Exception as e:
         return jsonify({'error': f'Lỗi xử lý file Excel: {str(e)}'}), 500
 
+@app.route('/api/users/search', methods=['GET'])
+def search_users():
+    """Tìm kiếm users để checkin thủ công"""
+    try:
+        query = request.args.get('q', '').lower()
+        users_data = load_users_json()
+        users = users_data.get('users', [])
+        
+        if query:
+            # Tìm kiếm theo tên, phone, company
+            filtered_users = [u for u in users if 
+                            query in (u.get('name', '')).lower() or
+                            query in (u.get('phone', '')).lower() or
+                            query in (u.get('company', '')).lower()]
+        else:
+            filtered_users = users
+        
+        # Chỉ trả về thông tin cần thiết
+        result = []
+        for user in filtered_users:
+            result.append({
+                'id': user.get('id'),
+                'name': user.get('name', ''),
+                'phone': user.get('phone', ''),
+                'company': user.get('company', ''),
+                'department': user.get('department', ''),
+                'position': user.get('position', ''),
+                'gender': user.get('gender', '')
+            })
+        
+        return jsonify({'users': result})
+        
+    except Exception as e:
+        return jsonify({'error': f'Lỗi tìm kiếm users: {str(e)}'}), 500
+
+@app.route('/api/manual-checkin', methods=['POST'])
+def manual_checkin():
+    """Checkin thủ công bằng user_id"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({'error': 'Thiếu user_id'}), 400
+        
+        # Kiểm tra user có tồn tại không
+        users_data = load_users_json()
+        user = next((u for u in users_data.get('users', []) if u.get('id') == user_id), None)
+        
+        if not user:
+            return jsonify({'error': 'Không tìm thấy người dùng'}), 404
+        
+        # Kiểm tra đã checkin hôm nay chưa
+        checkins_data = load_checkins_json()
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        existing_checkin = next((c for c in checkins_data.get('checkins', []) 
+                               if c.get('user_id') == user_id and c.get('date') == today), None)
+        
+        if existing_checkin:
+            return jsonify({
+                'error': 'Khách đã checkin',
+                'message': f'{user.get("name", "")} đã check-in lúc {existing_checkin.get("checked_at", "")}',
+                'checked_at': existing_checkin.get('checked_at')
+            }), 400
+        
+        # Tạo checkin mới
+        new_checkin = {
+            'id': max([c.get('id', 0) for c in checkins_data.get('checkins', [])], default=0) + 1,
+            'user_id': user_id,
+            'name': user.get('name', ''),
+            'phone': user.get('phone', ''),
+            'gender': user.get('gender', ''),
+            'company': user.get('company', ''),
+            'department': user.get('department', ''),
+            'position': user.get('position', ''),
+            'date': today,
+            'checked_at': datetime.now().isoformat(),
+            'method': 'manual'  # Đánh dấu là checkin thủ công
+        }
+        
+        # Lưu checkin
+        with _checkins_lock:
+            checkins_data['checkins'].append(new_checkin)
+            save_checkins_json(checkins_data)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Check-in thành công cho {user.get("name", "")}',
+            'checkin': new_checkin
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Lỗi checkin thủ công: {str(e)}'}), 500
+
 @app.route('/api/checkin-status/<int:user_id>', methods=['GET'])
 def check_checkin_status(user_id):
     """Kiểm tra trạng thái check-in của user trong ngày"""
