@@ -1,3 +1,19 @@
 {
-  "users": []
+  "users": [
+    {
+      "id": 1,
+      "name": "Dat",
+      "created_at": "2025-09-13T08:40:24.859814Z",
+      "images": [
+        "data/images/1/2025/09/20250913084024856799_captured.jpg",
+        "data/images/1/2025/09/20250913084024858062_captured.jpg",
+        "data/images/1/2025/09/20250913084024859362_captured.jpg"
+      ],
+      "phone": "0976513859",
+      "gender": "Nam",
+      "company": "A",
+      "department": "B",
+      "position": "C"
+    }
+  ]
 }

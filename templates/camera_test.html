@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Test - Khung xanh nhận diện</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .camera-section {
+            margin-bottom: 20px;
+        }
+        
+        .camera-controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        select, button {
+            padding: 10px 15px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+        }
+        
+        #video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: #e8f5e8;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .debug {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        
+        .back-link:hover {
+            background: #545b62;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Quay lại trang chủ</a>
+        
+        <h1>📷 Camera Test - Khung xanh nhận diện khuôn mặt</h1>
+        
+        <div class="camera-section">
+            <div class="camera-controls">
+                <select id="cameraSelect">
+                    <option value="">Chọn camera...</option>
+                </select>
+                <button id="startBtn">Bật camera</button>
+                <button id="stopBtn" disabled>Tắt camera</button>
+                <button id="testBtn" disabled>Test overlay</button>
+            </div>
+            
+            <div class="video-container">
+                <video id="video" autoplay muted playsinline></video>
+                <canvas id="overlay"></canvas>
+            </div>
+        </div>
+        
+        <div class="status" id="status">Sẵn sàng bật camera</div>
+        
+        <div class="debug" id="debug">Debug info sẽ hiển thị ở đây...</div>
+    </div>
+
+    <script>
+        class CameraTest {
+            constructor() {
+                this.video = document.getElementById('video');
+                this.overlay = document.getElementById('overlay');
+                this.cameraSelect = document.getElementById('cameraSelect');
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.testBtn = document.getElementById('testBtn');
+                this.status = document.getElementById('status');
+                this.debug = document.getElementById('debug');
+                this.stream = null;
+                this.detecting = false;
+                this.faceApiLoaded = false;
+                
+                this.init();
+            }
+            
+            async init() {
+                await this.loadCameras();
+                this.setupEvents();
+            }
+            
+            async loadCameras() {
+                try {
+                    this.cameraSelect.innerHTML = '<option value="">Chọn camera...</option>';
+                    
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const cameras = devices.filter(device => device.kind === 'videoinput');
+                    
+                    if (cameras.length > 0) {
+                        cameras.forEach((camera, index) => {
+                            const option = document.createElement('option');
+                            option.value = index;
+                            option.textContent = camera.label || `Camera ${index + 1}`;
+                            this.cameraSelect.appendChild(option);
+                        });
+                    } else {
+                        const option = document.createElement('option');
+                        option.value = 'default';
+                        option.textContent = 'Camera mặc định';
+                        this.cameraSelect.appendChild(option);
+                    }
+                } catch (error) {
+                    this.log('Lỗi tải camera: ' + error.message);
+                }
+            }
+            
+            setupEvents() {
+                this.startBtn.addEventListener('click', () => this.startCamera());
+                this.stopBtn.addEventListener('click', () => this.stopCamera());
+                this.testBtn.addEventListener('click', () => this.testOverlay());
+            }
+            
+            log(message) {
+                console.log(message);
+                const timestamp = new Date().toLocaleTimeString();
+                this.debug.innerHTML += `[${timestamp}] ${message}<br>`;
+                this.debug.scrollTop = this.debug.scrollHeight;
+            }
+            
+            async startCamera() {
+                const selectedIndex = this.cameraSelect.value;
+                if (!selectedIndex) {
+                    this.log('Vui lòng chọn camera');
+                    return;
+                }
+                
+                try {
+                    this.log('Đang khởi động camera...');
+                    this.status.textContent = 'Đang khởi động camera...';
+                    
+                    // Load face-api.js
+                    if (!window.faceapi) {
+                        await this.loadFaceApi();
+                    }
+                    
+                    // Start camera
+                    let constraints;
+                    if (selectedIndex === 'default') {
+                        constraints = { video: true };
+                    } else {
+                        const devices = await navigator.mediaDevices.enumerateDevices();
+                        const cameras = devices.filter(device => device.kind === 'videoinput');
+                        constraints = {
+                            video: {
+                                deviceId: cameras[selectedIndex].deviceId ? { exact: cameras[selectedIndex].deviceId } : undefined
+                            }
+                        };
+                    }
+                    
+                    this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.video.srcObject = this.stream;
+                    
+                    this.video.onloadedmetadata = () => {
+                        this.log('Video loaded, setting up overlay...');
+                        this.setupOverlay();
+                        this.startFaceDetection();
+                        this.status.textContent = 'Camera đã bật - đang phát hiện khuôn mặt...';
+                        this.startBtn.disabled = true;
+                        this.stopBtn.disabled = false;
+                        this.testBtn.disabled = false;
+                    };
+                    
+                } catch (error) {
+                    this.log('Lỗi camera: ' + error.message);
+                    this.status.textContent = 'Lỗi: ' + error.message;
+                }
+            }
+            
+            async loadFaceApi() {
+                return new Promise((resolve, reject) => {
+                    if (window.faceapi) {
+                        resolve();
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    script.src = '/static/face-api/dist/face-api.js';
+                    script.onload = async () => {
+                        try {
+                            await faceapi.nets.tinyFaceDetector.loadFromUri('/static/face-api/model');
+                            this.faceApiLoaded = true;
+                            this.log('Face-api loaded successfully');
+                            resolve();
+                        } catch (e) {
+                            this.log('Lỗi load face-api model: ' + e.message);
+                            reject(e);
+                        }
+                    };
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+            }
+            
+            setupOverlay() {
+                const rect = this.video.getBoundingClientRect();
+                this.overlay.width = rect.width;
+                this.overlay.height = rect.height;
+                this.overlay.style.width = rect.width + 'px';
+                this.overlay.style.height = rect.height + 'px';
+                
+                this.log(`Overlay setup: ${rect.width}x${rect.height}`);
+            }
+            
+            startFaceDetection() {
+                if (!this.faceApiLoaded) {
+                    this.log('Face-api chưa load');
+                    return;
+                }
+                
+                this.detecting = true;
+                this.log('Bắt đầu phát hiện khuôn mặt...');
+                
+                const detectFaces = async () => {
+                    if (!this.detecting || !this.video || this.video.readyState < 2) {
+                        requestAnimationFrame(detectFaces);
+                        return;
+                    }
+                    
+                    try {
+                        const detections = await faceapi.detectAllFaces(this.video, new faceapi.TinyFaceDetectorOptions({
+                            inputSize: 416,
+                            scoreThreshold: 0.3
+                        }));
+                        
+                        this.drawFaces(detections);
+                        
+                        if (detections.length > 0) {
+                            this.status.textContent = `Phát hiện ${detections.length} khuôn mặt`;
+                        } else {
+                            this.status.textContent = 'Không phát hiện khuôn mặt';
+                        }
+                        
+                    } catch (error) {
+                        this.log('Lỗi phát hiện: ' + error.message);
+                    }
+                    
+                    requestAnimationFrame(detectFaces);
+                };
+                
+                detectFaces();
+            }
+            
+            drawFaces(detections) {
+                const ctx = this.overlay.getContext('2d');
+                if (!ctx) return;
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
+                
+                if (detections.length === 0) return;
+                
+                // Calculate scale
+                const videoWidth = this.video.videoWidth;
+                const videoHeight = this.video.videoHeight;
+                const scaleX = this.overlay.width / videoWidth;
+                const scaleY = this.overlay.height / videoHeight;
+                
+                // Draw face rectangles
+                ctx.strokeStyle = '#00ff00';
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+                ctx.lineWidth = 3;
+                
+                detections.forEach((detection, index) => {
+                    const box = detection.box;
+                    const x = box.x * scaleX;
+                    const y = box.y * scaleY;
+                    const width = box.width * scaleX;
+                    const height = box.height * scaleY;
+                    
+                    // Draw rectangle
+                    ctx.strokeRect(x, y, width, height);
+                    ctx.fillRect(x, y, width, height);
+                    
+                    // Draw text
+                    ctx.fillStyle = '#00ff00';
+                    ctx.font = '16px Arial';
+                    ctx.fillText(`Face ${index + 1}`, x, y - 5);
+                });
+            }
+            
+            testOverlay() {
+                this.log('Testing overlay...');
+                
+                const ctx = this.overlay.getContext('2d');
+                if (!ctx) {
+                    this.log('ERROR: No canvas context!');
+                    return;
+                }
+                
+                // Clear and draw test rectangle
+                ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
+                
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.fillRect(50, 50, 200, 150);
+                
+                ctx.strokeStyle = 'red';
+                ctx.lineWidth = 5;
+                ctx.strokeRect(50, 50, 200, 150);
+                
+                ctx.fillStyle = 'red';
+                ctx.font = '20px Arial';
+                ctx.fillText('TEST OVERLAY', 60, 100);
+                
+                this.log('Overlay test completed - should see red rectangle');
+                this.status.textContent = 'Test overlay - kiểm tra khung đỏ';
+            }
+            
+            stopCamera() {
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                    this.stream = null;
+                }
+                
+                this.video.srcObject = null;
+                this.detecting = false;
+                this.startBtn.disabled = false;
+                this.stopBtn.disabled = true;
+                this.testBtn.disabled = true;
+                this.status.textContent = 'Camera đã tắt';
+                this.log('Camera stopped');
+            }
+        }
+        
+        // Start when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new CameraTest();
+        });
+    </script>
+</body>
+</html>

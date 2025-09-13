@@ -43,13 +43,15 @@ class TrainingApp {
     }
     
     captureFace() {
-        if (!window.cameraManager || !window.cameraManager.stream) {
+        
+        if (!window.cameraTest || !window.cameraTest.stream) {
             this.showError('Vui lòng bật camera trước khi chụp khuôn mặt');
             return;
         }
         
         try {
-            const img = window.cameraManager.captureImage();
+            const img = window.cameraTest.captureImage();
+            
             if (this.capturedImages.length >= 5) {
                 this.showError('Bạn đã chụp tối đa 5 ảnh');
                 return;
@@ -60,7 +62,7 @@ class TrainingApp {
             this.showSuccess('Đã chụp khuôn mặt!');
         } catch (error) {
             console.error('Lỗi chụp khuôn mặt:', error);
-            this.showError('Lỗi khi chụp khuôn mặt');
+            this.showError('Lỗi khi chụp khuôn mặt: ' + error.message);
         }
     }
     

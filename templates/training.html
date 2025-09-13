@@ -51,6 +51,7 @@
                 
                 <div class="video-container">
                     <video id="video" autoplay muted playsinline></video>
+                    <canvas id="overlay"></canvas>
                     <canvas id="canvas" style="display: none;"></canvas>
                 </div>
 
@@ -70,7 +71,7 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/camera_new.js') }}"></script>
     <script src="{{ url_for('static', filename='js/training.js') }}"></script>
 </body>
 </html> 

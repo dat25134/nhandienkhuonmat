@@ -1,11 +1,14 @@
 class CameraManager {
     constructor() {
+        
         this.video = document.getElementById('video');
         this.canvas = document.getElementById('canvas');
         this.overlay = document.getElementById('overlay');
         this.cameraSelect = document.getElementById('cameraSelect');
         this.startButton = document.getElementById('startCamera');
         this.stopButton = document.getElementById('stopCamera');
+        
+        
         this.stream = null;
         this.cameras = [];
         this.detecting = false;
@@ -83,7 +86,6 @@ class CameraManager {
                 }
                 
             } catch (permissionError) {
-                console.log('Không có quyền camera, sử dụng camera mặc định');
                 // Giữ lại option mặc định đã thêm ở trên
             }
             
@@ -152,6 +154,7 @@ class CameraManager {
             // Khi metadata có, resize overlay và bắt đầu realtime detection
             const onReady = () => {
                 this.updateOverlaySize();
+                this.testOverlayExists();
                 this.startRealtimeDetection();
             };
             if (this.video.readyState >= 1) onReady(); else this.video.onloadedmetadata = onReady;
@@ -264,15 +267,16 @@ class CameraManager {
     updateOverlaySize() {
         if (!this.overlay || !this.video) return;
         const rect = this.video.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        this.overlay.width = Math.max(1, Math.floor(rect.width * dpr));
-        this.overlay.height = Math.max(1, Math.floor(rect.height * dpr));
+        
+        // Setup overlay đơn giản như trang camera-test
+        this.overlay.width = rect.width;
+        this.overlay.height = rect.height;
         this.overlay.style.width = rect.width + 'px';
         this.overlay.style.height = rect.height + 'px';
-        const ctx = this.overlay.getContext('2d');
-        if (ctx && dpr !== 1) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        
     }
-
+    
+    
     async startRealtimeDetection() {
         if (!window.faceapi) return;
         try {
@@ -300,23 +304,35 @@ class CameraManager {
 
             // Vẽ khung nếu có
             if (ctx && detections && detections.length) {
-                const dpr = window.devicePixelRatio || 1;
-                const cssW = this.overlay.width / dpr;
-                const cssH = this.overlay.height / dpr;
-                const vw = this.video.videoWidth || cssW;
-                const vh = this.video.videoHeight || cssH;
-                const scale = Math.max(cssW / vw, cssH / vh);
-                const offsetX = (cssW - vw * scale) / 2;
-                const offsetY = (cssH - vh * scale) / 2;
+                // Vẽ khung đỏ test cố định để kiểm tra overlay
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 5;
+                ctx.strokeRect(10, 10, 50, 50);
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.fillRect(10, 10, 50, 50);
+                
+                // Tính scale đơn giản như trang camera-test
+                const videoWidth = this.video.videoWidth;
+                const videoHeight = this.video.videoHeight;
+                const scaleX = this.overlay.width / videoWidth;
+                const scaleY = this.overlay.height / videoHeight;
+                
+                
                 ctx.lineWidth = 3;
                 ctx.strokeStyle = '#22c55e';
-                detections.forEach(d => {
+                ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
+                
+                detections.forEach((d, index) => {
                     const r = d.box;
-                    const x = (offsetX + r.x * scale) * dpr;
-                    const y = (offsetY + r.y * scale) * dpr;
-                    const w = (r.width * scale) * dpr;
-                    const h = (r.height * scale) * dpr;
+                    const x = r.x * scaleX;
+                    const y = r.y * scaleY;
+                    const w = r.width * scaleX;
+                    const h = r.height * scaleY;
+                    
+                    
+                    // Vẽ khung xanh
                     ctx.strokeRect(x, y, w, h);
+                    ctx.fillRect(x, y, w, h);
                 });
             }
 
@@ -373,5 +389,10 @@ class CameraManager {
 
 // Khởi tạo camera manager khi trang được tải
 document.addEventListener('DOMContentLoaded', () => {
-    window.cameraManager = new CameraManager();
+    
+    try {
+        window.cameraManager = new CameraManager();
+    } catch (error) {
+        console.error('Error initializing CameraManager:', error);
+    }
 }); 

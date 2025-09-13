@@ -198,6 +198,10 @@ def manage_page():
 def welcome_page():
     return render_template('welcome.html')
 
+@app.route('/camera-test')
+def camera_test_page():
+    return render_template('camera_test.html')
+
 @app.route('/api/users', methods=['GET'])
 def get_users():
     data = load_users_json()
