@@ -323,7 +323,7 @@ class MediaPipeCameraManager {
                 });
                 
                 this.mesh.setOptions({ 
-                    maxNumFaces: 1, 
+                    maxNumFaces: 5, 
                     refineLandmarks: true, 
                     minDetectionConfidence: 0.6, 
                     minTrackingConfidence: 0.6 
@@ -394,34 +394,51 @@ class MediaPipeCameraManager {
         ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
         ctx.drawImage(results.image, 0, 0, this.overlay.width, this.overlay.height);
         
-        const landmarks = results.multiFaceLandmarks && results.multiFaceLandmarks[0];
-        if (!landmarks) {
+        // Kiểm tra có khuôn mặt nào không
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
             this.stableCounter = 0;
             this.lastX = null;
             return;
         }
         
-        // Vẽ oval nhẹ
-        this.drawingUtils.drawConnectors(ctx, landmarks, this.mpFaceMesh.FACEMESH_FACE_OVAL, { 
-            lineWidth: 1.0,
-            color: 'rgba(255, 255, 255, 0.6)'
+        // Màu sắc khác nhau cho từng khuôn mặt
+        const colors = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
+        
+        // Vẽ tất cả các khuôn mặt được phát hiện
+        results.multiFaceLandmarks.forEach((landmarks, index) => {
+            const color = colors[index % colors.length];
+            
+            // Vẽ oval nhẹ cho từng khuôn mặt
+            this.drawingUtils.drawConnectors(ctx, landmarks, this.mpFaceMesh.FACEMESH_FACE_OVAL, { 
+                lineWidth: 1.0,
+                color: `rgba(255, 255, 255, 0.6)`
+            });
+            
+            // Tính toán vị trí khuôn mặt
+            const faceBox = this.getFaceBox(landmarks);
+            if (faceBox) {
+                // Vẽ khung khuôn mặt với màu riêng
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(faceBox.x, faceBox.y, faceBox.width, faceBox.height);
+                
+                // Vẽ label cho khuôn mặt
+                ctx.fillStyle = color;
+                ctx.font = 'bold 14px Arial';
+                ctx.fillText(`Khuôn mặt ${index + 1}`, faceBox.x, faceBox.y - 10);
+            }
         });
         
-        // Phát hiện góc khuôn mặt
-        this.currentFaceAngle = this.detectFaceAngle(landmarks);
+        // Chỉ sử dụng khuôn mặt đầu tiên cho logic ổn định và auto scan
+        const firstLandmarks = results.multiFaceLandmarks[0];
+        this.currentFaceAngle = this.detectFaceAngle(firstLandmarks);
         
-        // Tính toán vị trí khuôn mặt để ổn định
-        const faceBox = this.getFaceBox(landmarks);
+        const faceBox = this.getFaceBox(firstLandmarks);
         if (faceBox) {
             const x = faceBox.x;
             const stable = this.lastX === null || Math.abs(x - this.lastX) < 8;
             this.stableCounter = stable ? this.stableCounter + 1 : 0;
             this.lastX = x;
-            
-            // Vẽ khung khuôn mặt
-            ctx.strokeStyle = '#22c55e';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(faceBox.x, faceBox.y, faceBox.width, faceBox.height);
             
             // Gọi scanFace nếu ổn định và đang ở chế độ tự động quét
             if (this.stableCounter >= 4 && !this.cooling && 
