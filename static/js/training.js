@@ -35,6 +35,10 @@ class TrainingApp {
         this.mesh = null;
         this.camera = null;
         
+        // Animation loop management
+        this.animationId = null;
+        this.isInitialized = false;
+        
         // Quality thresholds
         this.PROX_FRONT = 0.24;
         this.FACE_FRONT = 0.18;
@@ -422,7 +426,14 @@ class TrainingApp {
     // ========== AUTO CAPTURE METHODS ==========
     
     async startAutoCapture() {
+        // Kiểm tra trạng thái hiện tại
+        if (this.autoCaptureEnabled) {
+            console.log('Training: Auto capture đã đang chạy, bỏ qua...');
+            return;
+        }
+        
         if (!window.cameraTest || !window.cameraTest.stream) {
+            console.log('Training: Camera chưa sẵn sàng');
             return;
         }
         
@@ -444,20 +455,99 @@ class TrainingApp {
     }
     
     stopAutoCapture() {
+        console.log('Training: Đang dừng auto capture...');
+        
+        // Dừng auto capture
         this.autoCaptureEnabled = false;
         this.autoCaptureStarted = false;
+        
+        // Dừng animation loop
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
         this.removeAutoCaptureUI();
         
         // KHÔNG đóng mesh để có thể khởi động lại nhanh chóng
-        // if (this.mesh) {
-        //     this.mesh.close();
-        //     this.mesh = null;
-        // }
+        // FaceMesh instance được giữ lại cho performance
         
         // Xóa overlay
         if (window.cameraTest && window.cameraTest.overlay) {
             const ctx = window.cameraTest.overlay.getContext('2d');
             ctx.clearRect(0, 0, window.cameraTest.overlay.width, window.cameraTest.overlay.height);
+        }
+        
+        console.log('Training: Auto capture đã dừng, FaceMesh vẫn được giữ lại');
+    }
+    
+    // Method để cleanup hoàn toàn FaceMesh (chỉ dùng khi cần thiết)
+    async cleanupMediaPipe() {
+        console.log('Training: Đang cleanup MediaPipe hoàn toàn...');
+        
+        // Dừng auto capture trước
+        this.autoCaptureEnabled = false;
+        this.autoCaptureStarted = false;
+        
+        // Dừng animation loop
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
+        // Đóng FaceMesh
+        if (this.mesh) {
+            try {
+                await this.mesh.close();
+                this.mesh = null;
+                this.isInitialized = false;
+                console.log('Training: FaceMesh đã được cleanup hoàn toàn');
+            } catch (error) {
+                console.warn('Training: Lỗi khi cleanup FaceMesh:', error);
+            }
+        }
+    }
+    
+    // Method để kiểm tra và reset trạng thái khi cần
+    async resetState() {
+        console.log('Training: Đang reset trạng thái MediaPipe...');
+        
+        try {
+            // Dừng mọi thứ
+            this.autoCaptureEnabled = false;
+            this.autoCaptureStarted = false;
+            
+            if (this.animationId) {
+                cancelAnimationFrame(this.animationId);
+                this.animationId = null;
+            }
+            
+            // Cleanup hoàn toàn
+            await this.cleanupMediaPipe();
+            
+            // Reset auto capture state
+            this.resetAutoCapture();
+            
+            console.log('Training: Trạng thái đã được reset thành công');
+        } catch (error) {
+            console.error('Training: Lỗi khi reset trạng thái:', error);
+        }
+    }
+    
+    // Method để handle lỗi nghiêm trọng và force cleanup
+    async handleCriticalError(error) {
+        console.error('Training: Lỗi nghiêm trọng MediaPipe:', error);
+        
+        try {
+            // Force cleanup hoàn toàn
+            await this.resetState();
+            
+            // Hiển thị thông báo cho user
+            this.showError('MediaPipe gặp lỗi nghiêm trọng. Đã reset trạng thái. Vui lòng thử lại.');
+            
+        } catch (cleanupError) {
+            console.error('Training: Lỗi khi cleanup sau critical error:', cleanupError);
+            this.showError('Lỗi nghiêm trọng. Vui lòng reload trang.');
         }
     }
     
@@ -678,22 +768,33 @@ class TrainingApp {
     
     async initMediaPipeFaceDetection() {
         try {
-            // Khởi tạo FaceMesh theo cách của camera_new.js
-            this.mesh = new this.mpFaceMesh.FaceMesh({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-            });
+            // Chỉ khởi tạo FaceMesh nếu chưa có
+            if (!this.mesh) {
+                console.log('Training: Khởi tạo FaceMesh lần đầu...');
+                
+                // Khởi tạo FaceMesh với locateFile đúng cách
+                this.mesh = new this.mpFaceMesh.FaceMesh({
+                    locateFile: (file) => {
+                        const baseUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/';
+                        return `${baseUrl}${file}`;
+                    }
+                });
+                
+                this.mesh.setOptions({ 
+                    maxNumFaces: 1, 
+                    refineLandmarks: true, 
+                    minDetectionConfidence: 0.6, 
+                    minTrackingConfidence: 0.6 
+                });
+                
+                this.mesh.onResults((results) => this.onFaceDetectionResults(results));
+                this.isInitialized = true;
+                console.log('Training: FaceMesh đã được khởi tạo thành công');
+            } else {
+                console.log('Training: FaceMesh đã tồn tại, sử dụng lại...');
+            }
             
-            this.mesh.setOptions({ 
-                maxNumFaces: 1, 
-                refineLandmarks: true, 
-                minDetectionConfidence: 0.6, 
-                minTrackingConfidence: 0.6 
-            });
-            
-            this.mesh.onResults((results) => this.onFaceDetectionResults(results));
-            
-            // Sử dụng requestAnimationFrame thay vì MediaPipe Camera
-            // để tránh việc MediaPipe xử lý ảnh
+            // Bắt đầu detection loop
             this.startFaceDetectionLoop();
             
         } catch (error) {
@@ -703,9 +804,16 @@ class TrainingApp {
     }
     
     startFaceDetectionLoop() {
+        // Dừng animation loop cũ nếu có
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
         const detectFaces = async () => {
+            // Kiểm tra điều kiện dừng
             if (!this.autoCaptureEnabled || !this.mesh || !window.cameraTest || !window.cameraTest.video) {
-                requestAnimationFrame(detectFaces);
+                this.animationId = requestAnimationFrame(detectFaces);
                 return;
             }
             
@@ -716,9 +824,20 @@ class TrainingApp {
                 }
             } catch (error) {
                 console.warn('Lỗi phát hiện khuôn mặt:', error);
+                
+                // Kiểm tra lỗi nghiêm trọng
+                if (error.message && (
+                    error.message.includes('abort') || 
+                    error.message.includes('Module.arguments') ||
+                    error.message.includes('RuntimeError')
+                )) {
+                    console.error('Training: MediaPipe bị lỗi nghiêm trọng, xử lý cleanup...');
+                    this.handleCriticalError(error);
+                    return;
+                }
             }
             
-            requestAnimationFrame(detectFaces);
+            this.animationId = requestAnimationFrame(detectFaces);
         };
         
         detectFaces();

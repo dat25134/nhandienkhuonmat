@@ -17,6 +17,10 @@ class MediaPipeCameraManager {
         this.mpFaceMesh = null;
         this.drawingUtils = null;
         
+        // Animation loop management
+        this.animationId = null;
+        this.isInitialized = false;
+        
         // Face detection state
         this.stableCounter = 0;
         this.lastX = null;
@@ -216,6 +220,12 @@ class MediaPipeCameraManager {
     
     
     async startCamera() {
+        // Kiểm tra trạng thái hiện tại
+        if (this.detecting) {
+            console.log('Camera đã đang chạy, bỏ qua...');
+            return;
+        }
+        
         const selectedIndex = this.cameraSelect.value;
         if (!selectedIndex) {
             this.showError('Vui lòng chọn camera trước.');
@@ -243,9 +253,12 @@ class MediaPipeCameraManager {
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.video.srcObject = this.stream;
             
-            this.video.onloadedmetadata = () => {
+            this.video.onloadedmetadata = async () => {
                 this.setupOverlay();
-                this.initMediaPipe();
+                
+                // Khởi tạo MediaPipe (sẽ reuse instance nếu có)
+                await this.initMediaPipe();
+                
                 this.startButton.disabled = true;
                 this.stopButton.disabled = false;
                 this.cameraSelect.disabled = true;
@@ -297,22 +310,33 @@ class MediaPipeCameraManager {
     
     async initMediaPipe() {
         try {
-            // Khởi tạo FaceMesh
-            this.mesh = new this.mpFaceMesh.FaceMesh({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-            });
+            // Chỉ khởi tạo FaceMesh nếu chưa có
+            if (!this.mesh) {
+                console.log('Khởi tạo FaceMesh lần đầu...');
+                
+                // Khởi tạo FaceMesh với locateFile đúng cách
+                this.mesh = new this.mpFaceMesh.FaceMesh({
+                    locateFile: (file) => {
+                        const baseUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/';
+                        return `${baseUrl}${file}`;
+                    }
+                });
+                
+                this.mesh.setOptions({ 
+                    maxNumFaces: 1, 
+                    refineLandmarks: true, 
+                    minDetectionConfidence: 0.6, 
+                    minTrackingConfidence: 0.6 
+                });
+                
+                this.mesh.onResults((results) => this.onResults(results));
+                this.isInitialized = true;
+                console.log('FaceMesh đã được khởi tạo thành công');
+            } else {
+                console.log('FaceMesh đã tồn tại, sử dụng lại...');
+            }
             
-            this.mesh.setOptions({ 
-                maxNumFaces: 1, 
-                refineLandmarks: true, 
-                minDetectionConfidence: 0.6, 
-                minTrackingConfidence: 0.6 
-            });
-            
-            this.mesh.onResults((results) => this.onResults(results));
-            
-            // Sử dụng requestAnimationFrame thay vì MediaPipe Camera
-            // để tránh việc MediaPipe xử lý ảnh
+            // Bắt đầu detection loop
             this.startFaceDetectionLoop();
             this.detecting = true;
             
@@ -323,9 +347,16 @@ class MediaPipeCameraManager {
     }
     
     startFaceDetectionLoop() {
+        // Dừng animation loop cũ nếu có
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
         const detectFaces = async () => {
-            if (!this.detecting || !this.video || this.video.readyState < 2) {
-                requestAnimationFrame(detectFaces);
+            // Kiểm tra điều kiện dừng
+            if (!this.detecting || !this.video || this.video.readyState < 2 || !this.mesh) {
+                this.animationId = requestAnimationFrame(detectFaces);
                 return;
             }
             
@@ -334,9 +365,20 @@ class MediaPipeCameraManager {
                 await this.mesh.send({ image: this.video });
             } catch (error) {
                 console.warn('Lỗi phát hiện khuôn mặt:', error);
+                
+                // Kiểm tra lỗi nghiêm trọng
+                if (error.message && (
+                    error.message.includes('abort') || 
+                    error.message.includes('Module.arguments') ||
+                    error.message.includes('RuntimeError')
+                )) {
+                    console.error('MediaPipe bị lỗi nghiêm trọng, xử lý cleanup...');
+                    this.handleCriticalError(error);
+                    return;
+                }
             }
             
-            requestAnimationFrame(detectFaces);
+            this.animationId = requestAnimationFrame(detectFaces);
         };
         
         detectFaces();
@@ -470,27 +512,38 @@ class MediaPipeCameraManager {
     }
     
     stopCamera() {
+        // Kiểm tra trạng thái hiện tại
+        if (!this.detecting) {
+            console.log('Camera đã tắt, bỏ qua...');
+            return;
+        }
+        
+        console.log('Đang tắt camera...');
+        
+        // Dừng media stream
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
         }
         
-        // Không cần stop MediaPipe Camera vì không sử dụng nó nữa
-        // if (this.camera) {
-        //     this.camera.stop();
-        //     this.camera = null;
-        // }
-        
-        if (this.mesh) {
-            this.mesh.close();
-            this.mesh = null;
+        // Dừng animation loop
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
         }
         
+        // Dừng detection nhưng KHÔNG đóng FaceMesh
+        this.detecting = false;
+        
+        // Xóa video source
         this.video.srcObject = null;
+        
+        // Cập nhật UI
         this.startButton.disabled = false;
         this.stopButton.disabled = true;
         this.cameraSelect.disabled = false;
-        this.detecting = false;
+        
+        console.log('Camera đã tắt, FaceMesh vẫn được giữ lại');
         
         // Vô hiệu hóa các nút liên quan
         const scanButton = document.getElementById('scanFace');
@@ -512,6 +565,78 @@ class MediaPipeCameraManager {
         // Tắt chế độ tự động quét
         if (window.faceRecognitionApp && typeof window.faceRecognitionApp.stopAutoScan === 'function') {
             window.faceRecognitionApp.stopAutoScan();
+        }
+    }
+    
+    // Method để cleanup hoàn toàn FaceMesh (chỉ dùng khi cần thiết)
+    async cleanupMediaPipe() {
+        console.log('Đang cleanup MediaPipe hoàn toàn...');
+        
+        // Dừng detection trước
+        this.detecting = false;
+        
+        // Dừng animation loop
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
+        // Đóng FaceMesh
+        if (this.mesh) {
+            try {
+                await this.mesh.close();
+                this.mesh = null;
+                this.isInitialized = false;
+                console.log('FaceMesh đã được cleanup hoàn toàn');
+            } catch (error) {
+                console.warn('Lỗi khi cleanup FaceMesh:', error);
+            }
+        }
+    }
+    
+    // Method để kiểm tra và reset trạng thái khi cần
+    async resetState() {
+        console.log('Đang reset trạng thái MediaPipe...');
+        
+        try {
+            // Dừng mọi thứ
+            this.detecting = false;
+            
+            if (this.animationId) {
+                cancelAnimationFrame(this.animationId);
+                this.animationId = null;
+            }
+            
+            // Cleanup hoàn toàn
+            await this.cleanupMediaPipe();
+            
+            // Reset UI
+            this.startButton.disabled = false;
+            this.stopButton.disabled = true;
+            this.cameraSelect.disabled = false;
+            
+            console.log('Trạng thái đã được reset thành công');
+        } catch (error) {
+            console.error('Lỗi khi reset trạng thái:', error);
+        }
+    }
+    
+    // Method để handle lỗi nghiêm trọng và force cleanup
+    async handleCriticalError(error) {
+        console.error('Lỗi nghiêm trọng MediaPipe:', error);
+        
+        try {
+            // Force cleanup hoàn toàn
+            await this.resetState();
+            
+            // Hiển thị thông báo cho user
+            this.showError('MediaPipe gặp lỗi nghiêm trọng. Đã reset trạng thái. Vui lòng thử lại.');
+            
+            // Có thể thêm logic để reload page nếu cần
+            // window.location.reload();
+        } catch (cleanupError) {
+            console.error('Lỗi khi cleanup sau critical error:', cleanupError);
+            this.showError('Lỗi nghiêm trọng. Vui lòng reload trang.');
         }
     }
     
