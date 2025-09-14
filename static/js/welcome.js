@@ -16,6 +16,16 @@
     let defaultShown = false;
     let currentHeroKey = null;
 
+    // Camera elements
+    const cameraVideo = document.getElementById('cameraVideo');
+    const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+    const cameraToggle = document.getElementById('cameraToggle');
+    const cameraSelect = document.getElementById('cameraSelect');
+
+    // Camera manager instance
+    let cameraManager = null;
+    let isCameraActive = false;
+
     function resolveImageUrl(path){
         if (!path || typeof path !== 'string') return '';
         const src = path.startsWith('data/images') ? `/media/${path}` : `/${path}`;
@@ -47,6 +57,7 @@
                     const u = cache[c.user_id] || {};
                     const imgs = Array.isArray(u.images) ? u.images : [];
                     img = imgs.length ? imgs[0] : '';
+                    c.name = c.name || u.name || '';
                     c.company = c.company || u.company || '';
                     c.position = c.position || u.position || '';
                     c.gender = c.gender || u.gender || '';
@@ -123,66 +134,166 @@
         defaultShown = true;
     }
 
-    async function tick(){
-        // poll for new checkins
+    // Camera functions
+    async function initCamera() {
+        if (cameraManager) return;
+        
         try {
-            const recents = await enrich(await fetchRecent());
-            // update sidebar only if changed
-            renderList(recents);
-            const hasAny = recents && recents.length > 0;
-            if (lastHasAny !== hasAny) {
-                if (rightPane) rightPane.classList.toggle('hidden', !hasAny);
-                if (brandTitle) brandTitle.classList.toggle('hidden', !hasAny);
-                if (leftPane) leftPane.classList.toggle('wide', !hasAny);
-                if (flagContainer) {
-                    if (hasAny) {
-                        flagContainer.classList.remove('non-checkin');
-                    } else {
-                        flagContainer.classList.add('non-checkin');
-                    }
-                }
-                lastHasAny = hasAny;
+            // Wait for WelcomeCameraManager to be loaded
+            if (typeof WelcomeCameraManager === 'undefined') {
+                console.warn('WelcomeCameraManager not loaded yet');
+                return;
             }
 
-            if ((!hasAny) && queue.length === 0 && !showing) {
-                showDefaultHero();
-            }
-            // enqueue unseen items, newest last in queue
-            for (let i = recents.length - 1; i >= 0; i--) {
-                const it = recents[i];
-                if (!lastSeenKeys.has(it.key)) {
-                    queue.push(it);
-                    lastSeenKeys.add(it.key);
-                    // keep set from growing too large
-                    if (lastSeenKeys.size > 200) {
-                        const arr = Array.from(lastSeenKeys).slice(-120);
-                        lastSeenKeys = new Set(arr);
-                    }
+            // Create camera manager instance for welcome page
+            cameraManager = new WelcomeCameraManager();
+            
+            // Set up the checkin callback
+            cameraManager.setOnCheckin(function(userData) {
+                console.log('[WELCOME] New checkin detected:', userData);
+                
+                // Add to queue for display
+                const newItem = {
+                    key: `${userData.user_id}-${new Date().toISOString()}`,
+                    user_id: userData.user_id,
+                    name: userData.name || '',
+                    gender: userData.gender || '',
+                    position: userData.position || '',
+                    company: userData.company || '',
+                    seat_number: userData.seat_number || '',
+                    time: new Date(),
+                    imageUrl: resolveImageUrl(userData.image || userData.images?.[0] || '')
+                };
+                
+                // Add to queue if not already seen
+                if (!lastSeenKeys.has(newItem.key)) {
+                    queue.push(newItem);
+                    lastSeenKeys.add(newItem.key);
+                    console.log('[WELCOME] Added to queue:', newItem);
+                    
+                    // Update UI layout when we have new check-ins
+                    updateLayoutState(true);
+                    
+                    // Refresh the recent check-ins list
+                    refreshRecentList();
+                    
+                    // Start showing if not already showing
+                    maybeConsume();
+                }
+            });
+            
+            console.log('[WELCOME] Camera manager initialized');
+        } catch (error) {
+            console.error('[WELCOME] Error initializing camera:', error);
+        }
+    }
+
+    function toggleCamera() {
+        if (!cameraManager) {
+            console.warn('Camera manager not initialized');
+            return;
+        }
+
+        // Use the camera manager's toggle method
+        cameraManager.toggleCamera();
+        
+        // Update local state
+        isCameraActive = !!cameraManager.stream;
+    }
+
+    function updateLayoutState(hasCheckins) {
+        if (lastHasAny !== hasCheckins) {
+            if (rightPane) rightPane.classList.toggle('hidden', !hasCheckins);
+            if (brandTitle) brandTitle.classList.toggle('hidden', !hasCheckins);
+            if (leftPane) leftPane.classList.toggle('wide', !hasCheckins);
+            if (flagContainer) {
+                if (hasCheckins) {
+                    flagContainer.classList.remove('non-checkin');
+                } else {
+                    flagContainer.classList.add('non-checkin');
                 }
             }
-            // if nothing showing, start consume
-            maybeConsume();
-        } catch(_) {}
+            lastHasAny = hasCheckins;
+        }
+    }
+
+    async function refreshRecentList() {
+        try {
+            console.log('[WELCOME] Refreshing recent check-ins list...');
+            const checkins = await fetchRecent();
+            const enriched = await enrich(checkins);
+            renderList(enriched);
+            console.log('[WELCOME] Recent list refreshed with', enriched.length, 'items');
+        } catch (error) {
+            console.error('[WELCOME] Error refreshing recent list:', error);
+        }
     }
 
     function maybeConsume(){
         if (showing) return;
         const next = queue.shift();
-        if (!next) return;
+        if (!next) {
+            // No more items in queue, show default hero if no check-ins
+            if (lastHasAny === false) {
+                showDefaultHero();
+            }
+            return;
+        }
         showing = true;
         console.log('[WELCOME] showing', next);
         showHero(next);
         setTimeout(() => { showing = false; maybeConsume(); }, DISPLAY_MS);
     }
 
-    // kick off
+    // Event listeners
+    function setupEventListeners() {
+        if (cameraToggle) {
+            cameraToggle.addEventListener('click', toggleCamera);
+        }
+        
+        // Camera select event listener is handled by WelcomeCameraManager
+    }
+
+    // Initialize
     document.addEventListener('DOMContentLoaded', () => {
         // Immediately render initial state
         if (leftPane) leftPane.classList.add('wide');
         if (flagContainer) flagContainer.classList.add('non-checkin');
         showDefaultHero();
-        tick();
-        setInterval(tick, 2000);
+        
+        // Setup event listeners
+        setupEventListeners();
+        
+        // Initialize camera after a short delay to ensure scripts are loaded
+        setTimeout(() => {
+            initCamera();
+        }, 500);
+        
+        // Load initial checkins (one time only, no more polling)
+        fetchRecent().then(checkins => {
+            enrich(checkins).then(enriched => {
+                renderList(enriched);
+                const hasAny = enriched && enriched.length > 0;
+                
+                // Update layout state
+                updateLayoutState(hasAny);
+                
+                if ((!hasAny) && queue.length === 0 && !showing) {
+                    showDefaultHero();
+                }
+                
+                // Add existing checkins to queue
+                for (let i = enriched.length - 1; i >= 0; i--) {
+                    const it = enriched[i];
+                    if (!lastSeenKeys.has(it.key)) {
+                        queue.push(it);
+                        lastSeenKeys.add(it.key);
+                    }
+                }
+                maybeConsume();
+            });
+        });
+        
         // init fireworks with delay to ensure canvas is ready
         setTimeout(() => {
             const canvas = document.getElementById('fxFireworks');
@@ -190,7 +301,6 @@
         }, 100);
     });
 })();
-
 
 // -------- Fireworks effect (lightweight) ---------
 function initFireworks(canvas){
@@ -283,4 +393,3 @@ function initFireworks(canvas){
     }
     requestAnimationFrame(loop);
 }
-
