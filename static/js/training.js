@@ -707,17 +707,28 @@ class TrainingApp {
         
         document.body.appendChild(autoCaptureUI);
         
+        // Hiển thị hint-content có sẵn trong template
+        this.showExistingHintContent();
+        
         // Event listener cho nút dừng
         document.getElementById('stopAutoCapture').addEventListener('click', () => {
             this.stopAutoCapture();
         });
     }
     
+    showExistingHintContent() {
+        // Hiển thị hint-content có sẵn trong template
+        const hintEl = document.getElementById('autoCaptureHint');
+        if (hintEl) {
+            hintEl.style.display = 'block';
+        }
+    }
+    
     removeAutoCaptureUI() {
         const autoCaptureUI = document.getElementById('autoCaptureUI');
         if (autoCaptureUI) autoCaptureUI.remove();
         
-        // Ẩn hint khi dừng auto capture
+        // Ẩn hint-content có sẵn khi dừng auto capture
         const hintEl = document.getElementById('autoCaptureHint');
         if (hintEl) {
             hintEl.style.display = 'none';
@@ -760,6 +771,36 @@ class TrainingApp {
                 hintEl.style.display = 'block';
             } else {
                 hintEl.style.display = 'none';
+            }
+        } else if (!hintEl) {
+            // Nếu hint chưa tồn tại, hiển thị hint có sẵn
+            this.showExistingHintContent();
+        }
+    }
+    
+    // Method để cập nhật hint-content với thông báo khoảng cách
+    updateDistanceHint(needsToComeCloser) {
+        const hintEl = document.getElementById('autoCaptureHint');
+        const hintTextEl = document.querySelector('.hint-text');
+        
+        if (hintEl && hintTextEl) {
+            if (needsToComeCloser) {
+                // Hiển thị 'Lại gần' khi khung màu cam
+                hintTextEl.textContent = 'Lại gần đến khi viền xanh';
+                hintTextEl.style.color = '#f59e0b'; // Màu cam
+                hintTextEl.style.fontWeight = 'bold';
+            } else {
+                // Hiển thị hint bình thường khi khung màu xanh
+                const hintMap = {
+                    front: 'Nhìn TRỰC DIỆN & lại gần đến khi viền xanh → hệ thống tự chụp',
+                    right: 'QUAY PHẢI & lại gần đến khi viền xanh → hệ thống tự chụp',
+                    left: 'QUAY TRÁI & lại gần đến khi viền xanh → hệ thống tự chụp',
+                    done: 'Hoàn thành! Kiểm tra preview rồi nhấn Lưu người dùng'
+                };
+                const hintText = hintMap[this.currentCaptureStage] || hintMap.front;
+                hintTextEl.textContent = hintText;
+                hintTextEl.style.color = ''; // Reset màu
+                hintTextEl.style.fontWeight = ''; // Reset font weight
             }
         }
     }
@@ -890,9 +931,14 @@ class TrainingApp {
             
             // Vẽ khung khuôn mặt
             const faceBox = this.getFullFaceBox(landmarks, overlay.width, overlay.height);
+            const isGoodQuality = this.qualityHoldCount >= this.getQualityThreshold();
+            
             ctx.lineWidth = 2;
-            ctx.strokeStyle = this.qualityHoldCount >= this.getQualityThreshold() ? 'rgba(34,197,94,0.95)' : 'rgba(245,158,11,0.95)';
+            ctx.strokeStyle = isGoodQuality ? 'rgba(34,197,94,0.95)' : 'rgba(245,158,11,0.95)';
             ctx.strokeRect(faceBox.x, faceBox.y, faceBox.w, faceBox.h);
+            
+            // Cập nhật hint-content để hiển thị "Lại gần" khi khung màu cam
+            this.updateDistanceHint(!isGoodQuality);
         }
     }
     
