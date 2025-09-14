@@ -4,20 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Training - Hệ thống nhận dạng khuôn mặt</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-ui.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👤</text></svg>">
 </head>
 <body>
     <div class="container">
-        <header>
+        <div class="brand">
+            <div class="logo"></div>
             <h1>Training nhận dạng khuôn mặt</h1>
-            <nav>
-                <a href="/">Trang chủ</a>
-                <a href="/training" class="active">Training</a>
-            </nav>
-        </header>
+        </div>
+        <nav>
+            <a href="/">Trang chủ</a>
+            <a href="/welcome">Welcome</a>
+            <a href="/training" class="active">Training</a>
+            <a href="/manage">Quản lý</a>
+            <a href="/checkins">Check-ins</a>
+        </nav>
 
         <main>
-            <div class="training-section">
+            <div class="card training-section">
                 <h2>Thêm người dùng mới</h2>
                 
                 <div class="form-group">
@@ -27,9 +32,9 @@
 
                 <div class="form-group">
                     <label>Thông tin bổ sung:</label>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
+                    <div class="grid grid-3">
                         <input id="userPhone" type="text" placeholder="Số điện thoại">
-                        <select id="userGender" class="camera-select">
+                        <select id="userGender">
                             <option value="">Giới tính</option>
                             <option value="Nam">Nam</option>
                             <option value="Nữ">Nữ</option>
@@ -43,7 +48,7 @@
                 </div>
 
                 <div class="camera-controls">
-                    <select id="cameraSelect" class="camera-select">
+                    <select id="cameraSelect">
                         <option value="">Chọn camera...</option>
                     </select>
                     <button id="startCamera" class="btn btn-primary">Bật camera</button>
@@ -57,10 +62,12 @@
                 </div>
 
                 <div class="training-controls">
-                    <button id="captureFace" class="btn btn-success" disabled>Chụp khuôn mặt</button>
-                    <button id="clearCaptured" class="btn btn-secondary" style="margin-left:10px">Xóa ảnh đã chụp</button>
-                    <input id="uploadImages" type="file" accept="image/*" multiple style="margin-left:10px" />
-                    <small>(Chụp bắt buộc 3 ảnh: chính diện, quay trái, quay phải)</small>
+                    <div class="row">
+                        <button id="captureFace" class="btn btn-success" disabled>Chụp khuôn mặt</button>
+                        <button id="clearCaptured" class="btn btn-secondary">Xóa ảnh đã chụp</button>
+                        <input id="uploadImages" type="file" accept="image/*" multiple />
+                    </div>
+                    <small class="hint">(Chụp bắt buộc 3 ảnh: chính diện, quay trái, quay phải)</small>
                     <button id="saveUser" class="btn btn-primary" disabled>Lưu người dùng</button>
                 </div>
 

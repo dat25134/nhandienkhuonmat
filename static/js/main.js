@@ -84,12 +84,38 @@ class FaceRecognitionApp {
         
         this.usersList.innerHTML = users.map(user => `
             <div class="user-item">
+                <div class="user-avatar">
+                    ${user.name ? user.name.charAt(0).toUpperCase() : '?'}
+                </div>
                 <div class="user-info">
-                    <h4>${user.name}</h4>
-                    <p>Đăng ký: ${new Date(user.created_at).toLocaleDateString('vi-VN')}</p>
+                    <div class="user-name">${user.name || 'Không tên'}</div>
+                    <div class="user-details">
+                        ${user.phone ? `📞 ${user.phone}` : ''} 
+                        ${user.company ? ` • ${user.company}` : ''}
+                        ${user.department ? ` • ${user.department}` : ''}
+                    </div>
+                </div>
+                <div class="user-status ${user.is_active !== false ? 'active' : 'inactive'}">
+                    ${user.is_active !== false ? 'Hoạt động' : 'Tạm khóa'}
                 </div>
             </div>
         `).join('');
+        
+        // Kiểm tra và hiển thị scroll hint
+        this.updateUsersScrollHint();
+    }
+    
+    // Cập nhật scroll hint cho danh sách người dùng
+    updateUsersScrollHint() {
+        const usersList = document.getElementById('usersList');
+        const scrollHint = document.getElementById('usersScrollHint');
+        if (!usersList || !scrollHint) return;
+        
+        // Sử dụng setTimeout để đảm bảo DOM đã render
+        setTimeout(() => {
+            const isScrollable = usersList.scrollHeight > usersList.clientHeight;
+            scrollHint.style.display = isScrollable ? 'inline' : 'none';
+        }, 100);
     }
     
     async scanFace() {
@@ -891,9 +917,9 @@ class FaceRecognitionApp {
         // Thêm vào đầu danh sách (mới nhất lên đầu)
         this.welcomeMessages.unshift(welcomeItem);
         
-        // Giới hạn tối đa 10 thông báo để tránh quá tải
-        if (this.welcomeMessages.length > 10) {
-            this.welcomeMessages = this.welcomeMessages.slice(0, 10);
+        // Giới hạn tối đa 50 thông báo để tránh quá tải (tăng từ 10 lên 50)
+        if (this.welcomeMessages.length > 50) {
+            this.welcomeMessages = this.welcomeMessages.slice(0, 50);
         }
         
         this.renderWelcomeMessagesWithAnimation();
@@ -1008,6 +1034,66 @@ class FaceRecognitionApp {
                 card.classList.remove('new-card', 'slide-down');
             });
         }, 800);
+        
+        // Cập nhật counter số lượng check-in
+        this.updateCheckinCount();
+        
+        // Auto scroll đến card mới nhất nếu có card mới
+        if (this.welcomeMessages.length > 0) {
+            setTimeout(() => {
+                this.scrollToNewCard();
+                this.updateScrollIndicator();
+            }, 100);
+        }
+        
+        // Cập nhật scroll indicator
+        this.updateScrollIndicator();
+    }
+    
+    // Cập nhật counter số lượng check-in
+    updateCheckinCount() {
+        const countEl = document.getElementById('checkinCount');
+        if (!countEl) return;
+        
+        const count = this.welcomeMessages.length;
+        countEl.textContent = `${count} người`;
+        countEl.className = count > 0 ? 'chip ok' : 'chip';
+        
+        // Thêm animation cho counter khi có thay đổi
+        countEl.style.transform = 'scale(1.1)';
+        setTimeout(() => {
+            countEl.style.transform = 'scale(1)';
+        }, 200);
+    }
+    
+    // Auto scroll đến card mới nhất
+    scrollToNewCard() {
+        const container = document.getElementById('welcomeMessages');
+        if (!container) return;
+        
+        // Scroll đến đầu danh sách (card mới nhất)
+        container.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }
+    
+    // Kiểm tra và cập nhật scroll indicator
+    updateScrollIndicator() {
+        const container = document.getElementById('welcomeMessages');
+        const scrollHint = document.getElementById('scrollHint');
+        if (!container) return;
+        
+        const isScrollable = container.scrollHeight > container.clientHeight;
+        const isLargeList = this.welcomeMessages.length > 15;
+        
+        container.classList.toggle('scrollable', isScrollable);
+        container.classList.toggle('large-list', isLargeList);
+        
+        // Hiển thị/ẩn scroll hint
+        if (scrollHint) {
+            scrollHint.style.display = isScrollable ? 'inline' : 'none';
+        }
     }
     
     // Render danh sách chào mừng (phương thức cũ để tương thích)

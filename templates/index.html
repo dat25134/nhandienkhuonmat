@@ -4,30 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hệ thống nhận dạng khuôn mặt</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-ui.css') }}">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👤</text></svg>">
 </head>
 <body>
     <div class="container">
-        <header>
+        <div class="brand">
+            <div class="logo"></div>
             <h1>Hệ thống nhận dạng khuôn mặt</h1>
-            <nav>
-                <a href="/" class="active">Trang chủ</a>
-                <a href="/welcome">Welcome</a>
-                <a href="/training">Training</a>
-                <a href="/manage">Quản lý</a>
-            </nav>
-        </header>
+        </div>
+        <nav>
+            <a href="/" class="active">Trang chủ</a>
+            <a href="/welcome">Welcome</a>
+            <a href="/training">Training</a>
+            <a href="/manage">Quản lý</a>
+            <a href="/checkins">Check-ins</a>
+        </nav>
 
         <main>
-            <div class="welcome-section">
-                <h2>Khách mời đã check-in</h2>
+            <div class="card welcome-section">
+                <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h2 style="margin: 0;">Khách mời đã check-in</h2>
+                    <div class="chip" id="checkinCount">0 người</div>
+                </div>
                 <div id="welcomeMessages" class="welcome-cards-container">
                     <div class="no-messages">Chưa có khách mời nào check-in</div>
                 </div>
+                <div class="hint" style="text-align: center; margin-top: 8px; font-size: 12px;">
+                    <span id="scrollHint" style="display: none;">📜 Cuộn để xem thêm</span>
+                </div>
             </div>
 
-            <div class="camera-section compact">
+            <div class="card camera-section">
                 <h2>Camera</h2>
                 <div class="camera-controls">
                     <select id="cameraSelect" class="camera-select">
@@ -45,11 +53,11 @@
                 <div class="capture-multi-controls" style="margin-top:10px;">
                     <button id="captureIdentify" class="btn btn-success" disabled>Chụp thêm ảnh</button>
                     <button id="clearIdentify" class="btn btn-secondary">Xóa ảnh đã chụp</button>
-                    <small style="margin-left:10px;">(Tối đa 5 ảnh; có thể kết hợp upload)</small>
+                    <small class="hint" style="margin-left:10px;">(Tối đa 5 ảnh; có thể kết hợp upload)</small>
                 </div>
             </div>
 
-            <div class="recognition-section compact">
+            <div class="card recognition-section">
                 <h2>Nhận dạng khuôn mặt</h2>
                 <div class="scan-controls" style="margin-bottom: 15px;">
                     <button id="scanFace" class="btn btn-success" disabled>Quét khuôn mặt</button>
@@ -57,8 +65,8 @@
                     <button id="rebuildCacheBtn" class="btn btn-secondary" style="margin-left:10px">Rebuild cache</button>
                 </div>
                 <div class="scan-status" style="margin-bottom: 10px;">
-                    <div id="autoScanStatus" style="font-weight: bold; font-size: 14px;">🔴 Tắt tự động quét</div>
-                    <div id="cooldownStatus" style="font-size: 12px; margin-top: 5px;"></div>
+                    <div id="autoScanStatus" class="chip err">🔴 Tắt tự động quét</div>
+                    <div id="cooldownStatus" class="hint" style="margin-top: 5px;"></div>
                     <div id="scanStats" style="margin-top: 10px;"></div>
                 </div>
                 <!-- Theo yêu cầu: Không upload ảnh ở màn nhận dạng -->
@@ -73,9 +81,9 @@
                         <div><strong>Vị trí:</strong> <span id="infoPosition">-</span></div>
                     </div>
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+                <div class="row" style="margin-top:10px;">
                     <button id="checkinBtn" class="btn btn-primary" disabled>Check-in</button>
-                    <a class="btn btn-secondary" href="/checkins" style="text-decoration:none; line-height: 36px;">Xem danh sách check-in</a>
+                    <a class="btn btn-secondary" href="/checkins">Xem danh sách check-in</a>
                 </div>
                 
                 <div id="recognitionResult" class="result-container" style="display: none;">
@@ -84,8 +92,13 @@
                 </div>
             </div>
 
-            <div class="users-section">
-                <h2>Danh sách người dùng</h2>
+            <div class="card users-section">
+                <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h2 style="margin: 0;">Danh sách người dùng</h2>
+                    <div class="hint" id="usersScrollHint" style="display: none; font-size: 12px;">
+                        📜 Cuộn để xem thêm
+                    </div>
+                </div>
                 <div id="usersList" class="users-list">
                     <p>Đang tải...</p>
                 </div>
@@ -151,6 +164,27 @@
             el.textContent = message;
             document.body.appendChild(el);
             setTimeout(()=>{ el.remove(); }, 3000);
+        }
+
+        // Function để cập nhật counter số lượng check-in
+        function updateCheckinCount() {
+            const container = document.getElementById('welcomeMessages');
+            const countEl = document.getElementById('checkinCount');
+            if (!container || !countEl) return;
+            
+            const cards = container.querySelectorAll('.welcome-card');
+            const count = cards.length;
+            countEl.textContent = `${count} người`;
+            countEl.className = count > 0 ? 'chip ok' : 'chip';
+        }
+
+        // Override renderWelcomeMessagesWithAnimation để cập nhật counter
+        if (window.cameraManager && window.cameraManager.renderWelcomeMessagesWithAnimation) {
+            const originalRender = window.cameraManager.renderWelcomeMessagesWithAnimation;
+            window.cameraManager.renderWelcomeMessagesWithAnimation = function() {
+                originalRender.call(this);
+                updateCheckinCount();
+            };
         }
     })();
     </script>

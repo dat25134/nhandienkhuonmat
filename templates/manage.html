@@ -4,72 +4,144 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quản lý khách</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-ui.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👤</text></svg>">
+    <style>
+        /* Force button colors với specificity cực cao */
+        body div.container main div.card button.btn.btn-danger,
+        body div.container main div.card a.btn.btn-danger {
+            background: #dc2626 !important;
+            border-color: #dc2626 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #dc2626 !important;
+        }
+        body div.container main div.card button.btn.btn-primary,
+        body div.container main div.card a.btn.btn-primary {
+            background: #7c3aed !important;
+            border-color: #7c3aed !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #7c3aed !important;
+        }
+        body div.container main div.card button.btn.btn-success,
+        body div.container main div.card a.btn.btn-success {
+            background: #059669 !important;
+            border-color: #059669 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #059669 !important;
+        }
+        body div.container main div.card button.btn.btn-info,
+        body div.container main div.card a.btn.btn-info {
+            background: #0284c7 !important;
+            border-color: #0284c7 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #0284c7 !important;
+        }
+        body div.container main div.card button.btn.btn-secondary,
+        body div.container main div.card a.btn.btn-secondary {
+            background: #374151 !important;
+            border-color: #374151 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #374151 !important;
+        }
+        
+        /* Test với màu sắc rõ ràng */
+        #deleteAllUsers {
+            background: #ff0000 !important;
+            color: #ffffff !important;
+            border: 2px solid #ff0000 !important;
+        }
+        #saveProfile {
+            background: #0000ff !important;
+            color: #ffffff !important;
+            border: 2px solid #0000ff !important;
+        }
+        #importExcel {
+            background: #00ff00 !important;
+            color: #000000 !important;
+            border: 2px solid #00ff00 !important;
+        }
+        
+        /* Test tất cả button */
+        button {
+            background: #ff00ff !important;
+            color: #ffffff !important;
+            border: 3px solid #ff00ff !important;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
+        <div class="brand">
+            <div class="logo"></div>
             <h1>Quản lý khách</h1>
-            <nav>
-                <a href="/">Check-in</a>
-                <a href="/training">Training</a>
-                <a href="/checkins">Check-ins</a>
-                <a href="/manage" class="active">Quản lý</a>
-            </nav>
-        </header>
+        </div>
+        <nav>
+            <a href="/">Trang chủ</a>
+            <a href="/welcome">Welcome</a>
+            <a href="/training">Training</a>
+            <a href="/manage" class="active">Quản lý</a>
+            <a href="/checkins">Check-ins</a>
+        </nav>
 
         <main>
-            <div class="users-section">
+            <div class="card users-section">
                 <h2>Danh sách khách</h2>
-                <div style="display:flex; gap:10px; margin-bottom: 12px; flex-wrap: wrap;">
-                    <input id="searchUser" type="text" placeholder="Tìm theo tên/điện thoại/công ty" style="flex:1; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                <div class="row" style="margin-bottom: 12px;">
+                    <input id="searchUser" type="text" placeholder="Tìm theo tên/điện thoại/công ty" class="grow">
                     <button id="rebuildCache" class="btn btn-secondary">Làm mới cache nhận diện</button>
                     <button id="downloadTemplate" class="btn btn-info">Tải template Excel</button>
-                    <a href="/api/excel/template" download="template_khach_moi.xlsx" class="btn btn-info" style="text-decoration: none;">Tải trực tiếp</a>
+                    <!-- <a href="/api/excel/template" download="template_khach_moi.xlsx" class="btn btn-info">Tải trực tiếp</a> -->
                     <button id="deleteAllUsers" class="btn btn-danger">Xóa toàn bộ khách</button>
                 </div>
                 
                 <!-- Excel Import Section -->
-                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #dee2e6;">
-                    <h3 style="margin: 0 0 10px 0; color: #495057;">📊 Import từ Excel</h3>
-                    <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center;">
-                        <input id="excelFile" type="file" accept=".xlsx,.xls" style="flex:1; padding:8px; border:2px solid #e0e0e0; border-radius:6px;">
+                <div class="card" style="background: rgba(34,197,94,.05); border-color: rgba(34,197,94,.2); margin-bottom: 15px;">
+                    <h3 style="margin: 0 0 10px 0; color: var(--ink);">📊 Import từ Excel</h3>
+                    <div class="row">
+                        <input id="excelFile" type="file" accept=".xlsx,.xls" class="grow">
                         <button id="importExcel" class="btn btn-success">Import Excel</button>
                         <button id="clearImport" class="btn btn-secondary">Xóa file</button>
                     </div>
-                    <div id="importStatus" style="margin-top: 10px; font-size: 14px;"></div>
+                    <div id="importStatus" class="hint" style="margin-top: 10px;"></div>
                 </div>
                 <div id="userList" class="users-list"></div>
             </div>
 
-            <div class="training-section">
+            <div class="card training-section">
                 <h2>Chỉnh sửa hồ sơ</h2>
                 <div id="editPanel" style="display:none;">
                     <div class="form-group">
                         <label>Họ tên</label>
                         <input id="editName" type="text" placeholder="Tên">
                     </div>
-                    <div class="form-group" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
-                        <input id="editPhone" type="text" placeholder="Số điện thoại">
-                        <select id="editGender" class="camera-select">
-                            <option value="">Giới tính</option>
-                            <option value="Nam">Nam</option>
-                            <option value="Nữ">Nữ</option>
-                            <option value="Khác">Khác</option>
-                        </select>
-                        <input id="editCompany" type="text" placeholder="Công ty">
-                        <input id="editDepartment" type="text" placeholder="Bộ phận">
-                        <input id="editPosition" type="text" placeholder="Vị trí">
-                        <input id="editSeatNumber" type="text" placeholder="Số ghế (VD: A01, B05)" required>
+                    <div class="form-group">
+                        <div class="grid grid-3">
+                            <input id="editPhone" type="text" placeholder="Số điện thoại">
+                            <select id="editGender">
+                                <option value="">Giới tính</option>
+                                <option value="Nam">Nam</option>
+                                <option value="Nữ">Nữ</option>
+                                <option value="Khác">Khác</option>
+                            </select>
+                            <input id="editCompany" type="text" placeholder="Công ty">
+                            <input id="editDepartment" type="text" placeholder="Bộ phận">
+                            <input id="editPosition" type="text" placeholder="Vị trí">
+                            <input id="editSeatNumber" type="text" placeholder="Số ghế (VD: A01, B05)" required>
+                        </div>
                     </div>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0;">
+                    <div class="row" style="margin:10px 0;">
                         <button id="saveProfile" class="btn btn-primary">Lưu hồ sơ</button>
                         <button id="deleteUser" class="btn btn-secondary">Xóa khách</button>
                     </div>
 
                     <h3>Ảnh training</h3>
-                    <div id="imageGrid" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;"></div>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <div id="imageGrid" class="grid" style="margin-bottom:10px;"></div>
+                    <div class="row">
                         <input id="addImages" type="file" accept="image/*" multiple>
                         <button id="uploadImagesBtn" class="btn btn-success">Thêm ảnh</button>
                         <button id="removeSelectedBtn" class="btn btn-secondary">Xóa ảnh đã chọn</button>

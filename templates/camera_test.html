@@ -4,143 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Camera Test - Khung xanh nhận diện</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: Arial, sans-serif;
-            background: #f0f0f0;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 20px;
-        }
-        
-        .camera-section {
-            margin-bottom: 20px;
-        }
-        
-        .camera-controls {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
-        select, button {
-            padding: 10px 15px;
-            margin: 5px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-        
-        button {
-            background: #007bff;
-            color: white;
-            cursor: pointer;
-            border: none;
-        }
-        
-        button:hover {
-            background: #0056b3;
-        }
-        
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        
-        .video-container {
-            position: relative;
-            width: 100%;
-            max-width: 600px;
-            margin: 0 auto;
-            border: 2px solid #ddd;
-            border-radius: 10px;
-            overflow: hidden;
-            background: #000;
-        }
-        
-        #video {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
-        
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 10;
-        }
-        
-        .status {
-            text-align: center;
-            margin: 20px 0;
-            padding: 15px;
-            background: #e8f5e8;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-        
-        .debug {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-            font-family: monospace;
-            font-size: 12px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        
-        .back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            padding: 10px 20px;
-            background: #6c757d;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-        
-        .back-link:hover {
-            background: #545b62;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-ui.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👤</text></svg>">
 </head>
 <body>
     <div class="container">
-        <a href="/" class="back-link">← Quay lại trang chủ</a>
+        <div class="brand">
+            <div class="logo"></div>
+            <h1>📷 Camera Test - Khung xanh nhận diện khuôn mặt</h1>
+        </div>
+        <nav>
+            <a href="/">Trang chủ</a>
+            <a href="/welcome">Welcome</a>
+            <a href="/training">Training</a>
+            <a href="/manage">Quản lý</a>
+            <a href="/checkins">Check-ins</a>
+        </nav>
         
-        <h1>📷 Camera Test - Khung xanh nhận diện khuôn mặt</h1>
-        
-        <div class="camera-section">
+        <div class="card camera-section">
+            <h2>Camera Test</h2>
             <div class="camera-controls">
                 <select id="cameraSelect">
                     <option value="">Chọn camera...</option>
                 </select>
-                <button id="startBtn">Bật camera</button>
-                <button id="stopBtn" disabled>Tắt camera</button>
-                <button id="testBtn" disabled>Test overlay</button>
+                <button id="startBtn" class="btn btn-primary">Bật camera</button>
+                <button id="stopBtn" class="btn btn-secondary" disabled>Tắt camera</button>
+                <button id="testBtn" class="btn btn-info" disabled>Test overlay</button>
             </div>
             
             <div class="video-container">
@@ -149,9 +38,14 @@
             </div>
         </div>
         
-        <div class="status" id="status">Sẵn sàng bật camera</div>
+        <div class="card">
+            <div id="status" class="chip warn">Sẵn sàng bật camera</div>
+        </div>
         
-        <div class="debug" id="debug">Debug info sẽ hiển thị ở đây...</div>
+        <div class="card">
+            <h3>Debug Info</h3>
+            <div id="debug" style="background: rgba(0,0,0,.2); padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto;">Debug info sẽ hiển thị ở đây...</div>
+        </div>
     </div>
 
     <script>
@@ -217,6 +111,11 @@
                 this.debug.scrollTop = this.debug.scrollHeight;
             }
             
+            updateStatus(message, type = 'warn') {
+                this.status.textContent = message;
+                this.status.className = `chip ${type}`;
+            }
+            
             async startCamera() {
                 const selectedIndex = this.cameraSelect.value;
                 if (!selectedIndex) {
@@ -226,7 +125,7 @@
                 
                 try {
                     this.log('Đang khởi động camera...');
-                    this.status.textContent = 'Đang khởi động camera...';
+                    this.updateStatus('Đang khởi động camera...', 'warn');
                     
                     // Load MediaPipe
                     if (!window.mpFaceMesh) {
@@ -254,7 +153,7 @@
                         this.log('Video loaded, setting up overlay...');
                         this.setupOverlay();
                         this.startFaceDetection();
-                        this.status.textContent = 'Camera đã bật - đang phát hiện khuôn mặt...';
+                        this.updateStatus('Camera đã bật - đang phát hiện khuôn mặt...', 'ok');
                         this.startBtn.disabled = true;
                         this.stopBtn.disabled = false;
                         this.testBtn.disabled = false;
@@ -272,7 +171,7 @@
                         errorMessage += error.message;
                     }
                     
-                    this.status.textContent = errorMessage;
+                    this.updateStatus(errorMessage, 'err');
                 }
             }
             
@@ -404,7 +303,7 @@
                 
                 const landmarks = results.multiFaceLandmarks && results.multiFaceLandmarks[0];
                 if (!landmarks) {
-                    this.status.textContent = 'Không phát hiện khuôn mặt';
+                    this.updateStatus('Không phát hiện khuôn mặt', 'warn');
                     return;
                 }
                 
@@ -432,7 +331,7 @@
                     ctx.fillText('Face Detected', faceBox.x, faceBox.y - 5);
                 }
                 
-                this.status.textContent = 'Phát hiện 1 khuôn mặt';
+                this.updateStatus('Phát hiện 1 khuôn mặt', 'ok');
             }
             
             getFaceBox(landmarks) {
@@ -496,7 +395,7 @@
                 ctx.fillText('TEST OVERLAY', 60, 100);
                 
                 this.log('Overlay test completed - should see red rectangle');
-                this.status.textContent = 'Test overlay - kiểm tra khung đỏ';
+                this.updateStatus('Test overlay - kiểm tra khung đỏ', 'warn');
             }
             
             stopCamera() {
@@ -520,7 +419,7 @@
                 this.startBtn.disabled = false;
                 this.stopBtn.disabled = true;
                 this.testBtn.disabled = true;
-                this.status.textContent = 'Camera đã tắt';
+                this.updateStatus('Camera đã tắt', 'warn');
                 this.log('Camera stopped');
             }
         }

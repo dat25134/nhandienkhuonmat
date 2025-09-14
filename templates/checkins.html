@@ -4,41 +4,114 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Danh sách Check-in</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-ui.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👤</text></svg>">
+    <style>
+        /* Force button colors với specificity cực cao */
+        body div.container main div.card button.btn.btn-danger,
+        body div.container main div.card a.btn.btn-danger {
+            background: #dc2626 !important;
+            border-color: #dc2626 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #dc2626 !important;
+        }
+        body div.container main div.card button.btn.btn-primary,
+        body div.container main div.card a.btn.btn-primary {
+            background: #7c3aed !important;
+            border-color: #7c3aed !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #7c3aed !important;
+        }
+        body div.container main div.card button.btn.btn-success,
+        body div.container main div.card a.btn.btn-success {
+            background: #059669 !important;
+            border-color: #059669 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #059669 !important;
+        }
+        body div.container main div.card button.btn.btn-secondary,
+        body div.container main div.card a.btn.btn-secondary {
+            background: #374151 !important;
+            border-color: #374151 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #374151 !important;
+        }
+        body div.container main div.card button.btn.btn-info,
+        body div.container main div.card a.btn.btn-info {
+            background: #0284c7 !important;
+            border-color: #0284c7 !important;
+            color: white !important;
+            background-image: none !important;
+            background-color: #0284c7 !important;
+        }
+        
+        /* Hover states */
+        button.btn.btn-danger:hover,
+        a.btn.btn-danger:hover {
+            background: #ef4444 !important;
+            border-color: #ef4444 !important;
+        }
+        button.btn.btn-primary:hover,
+        a.btn.btn-primary:hover {
+            background: #8b5cf6 !important;
+            border-color: #8b5cf6 !important;
+        }
+        button.btn.btn-success:hover,
+        a.btn.btn-success:hover {
+            background: #10b981 !important;
+            border-color: #10b981 !important;
+        }
+        button.btn.btn-secondary:hover,
+        a.btn.btn-secondary:hover {
+            background: #4b5563 !important;
+            border-color: #4b5563 !important;
+        }
+        button.btn.btn-info:hover,
+        a.btn.btn-info:hover {
+            background: #0ea5e9 !important;
+            border-color: #0ea5e9 !important;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
+        <div class="brand">
+            <div class="logo"></div>
             <h1>Danh sách Check-in</h1>
-            <nav>
-                <a href="/">Trang chủ</a>
-                <a href="/training">Training</a>
-                <a href="/checkins" class="active">Check-ins</a>
-            </nav>
-        </header>
+        </div>
+        <nav>
+            <a href="/">Trang chủ</a>
+            <a href="/welcome">Welcome</a>
+            <a href="/training">Training</a>
+            <a href="/manage">Quản lý</a>
+            <a href="/checkins" class="active">Check-ins</a>
+        </nav>
 
         <main>
             <!-- Chức năng checkin thủ công -->
-            <div class="manual-checkin-section" style="margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
-                <h2 style="margin-bottom: 15px; color: #2c3e50;">Check-in thủ công</h2>
-                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
-                    <input id="userSearch" type="text" placeholder="Tìm kiếm theo tên, số điện thoại, công ty..." 
-                           style="flex: 1; min-width: 300px; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+            <div class="card manual-checkin-section">
+                <h2>Check-in thủ công</h2>
+                <div class="row" style="margin-bottom: 15px;">
+                    <input id="userSearch" type="text" placeholder="Tìm kiếm theo tên, số điện thoại, công ty..." class="grow">
                     <button id="searchBtn" class="btn btn-primary">Tìm kiếm</button>
                 </div>
-                <div id="searchResults" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; background: white; display: none;">
+                <div id="searchResults" class="card" style="max-height: 300px; overflow-y: auto; display: none; background: rgba(255,255,255,.02);">
                     <!-- Kết quả tìm kiếm sẽ hiển thị ở đây -->
                 </div>
             </div>
 
-            <div class="users-section">
-                <h2 style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <span>Khách đã check-in (mỗi khách chỉ 1 lần mới nhất)</span>
+            <div class="card users-section">
+                <div class="row" style="justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <h2 style="margin: 0;">Khách đã check-in (mỗi khách chỉ 1 lần mới nhất)</h2>
                     <button id="clearBtn" class="btn btn-danger" title="Xóa toàn bộ danh sách">Xóa danh sách</button>
-                </h2>
-                <div style="display:flex; gap:10px; margin-bottom: 15px; flex-wrap: wrap;">
-                    <input id="search" type="text" placeholder="Tìm theo tên/điện thoại/công ty" style="flex:1; padding: 10px; border:2px solid #e0e0e0; border-radius:8px;">
-                    <select id="genderFilter" class="camera-select" style="min-width:150px;">
+                </div>
+                <div class="row" style="margin-bottom: 15px;">
+                    <input id="search" type="text" placeholder="Tìm theo tên/điện thoại/công ty" class="grow">
+                    <select id="genderFilter" style="min-width:150px;">
                         <option value="">Giới tính (Tất cả)</option>
                         <option value="Nam">Nam</option>
                         <option value="Nữ">Nữ</option>
