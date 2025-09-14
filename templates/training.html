@@ -60,11 +60,19 @@
                     <canvas id="overlay"></canvas>
                     <canvas id="canvas" style="display: none;"></canvas>
                 </div>
+                
+                <!-- Hướng dẫn auto capture -->
+                <div id="autoCaptureHint" class="auto-capture-hint" style="display: none;">
+                    <div class="hint-content">
+                        <div class="hint-icon">📷</div>
+                        <div class="hint-text">Nhìn TRỰC DIỆN & lại gần đến khi viền xanh → hệ thống tự chụp</div>
+                    </div>
+                </div>
 
                 <div class="training-controls">
                     <div class="row">
-                        <button id="captureFace" class="btn btn-success" disabled>Chụp khuôn mặt</button>
-                        <button id="clearCaptured" class="btn btn-secondary">Xóa ảnh đã chụp</button>
+                        <!-- <button id="captureFace" class="btn btn-success" disabled>Chụp khuôn mặt</button> -->
+                        <button id="clearCaptured" class="btn btn-secondary">Chụp lại</button>
                         <input id="uploadImages" type="file" accept="image/*" multiple />
                     </div>
                     <small class="hint">(Chụp bắt buộc 3 ảnh: chính diện, quay trái, quay phải)</small>
@@ -79,6 +87,7 @@
         </main>
     </div>
 
+    <!-- MediaPipe sẽ được load động trong training.js khi bật camera -->
     <script src="{{ url_for('static', filename='js/camera_new.js') }}"></script>
     <script src="{{ url_for('static', filename='js/training.js') }}"></script>
 </body>
