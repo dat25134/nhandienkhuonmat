@@ -122,98 +122,50 @@ class MediaPipeCameraManager {
                 return;
             }
             
-            // Kiểm tra HTTPS requirement
-            if (!window.isSecureContext && location.hostname !== 'localhost') {
-                reject(new Error('MediaPipe cần HTTPS hoặc localhost để hoạt động'));
-                return;
-            }
-            
             let loadedCount = 0;
             const totalScripts = 3;
-            let hasError = false;
             
             const checkComplete = () => {
                 loadedCount++;
-                if (loadedCount === totalScripts && !hasError) {
+                if (loadedCount === totalScripts) {
                     resolve();
                 }
             };
             
-            const handleError = (error) => {
-                if (!hasError) {
-                    hasError = true;
-                    reject(new Error(`Lỗi tải MediaPipe: ${error.message}`));
-                }
-            };
-            
-            // Load face_mesh.js với timeout
+            // Load face_mesh.js
             if (!window.mpFaceMesh) {
                 const script1 = document.createElement('script');
                 script1.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js';
                 script1.onload = checkComplete;
-                script1.onerror = () => handleError(new Error('Không thể tải face_mesh.js'));
-                
-                // Timeout sau 10 giây
-                const timeout1 = setTimeout(() => {
-                    handleError(new Error('Timeout tải face_mesh.js'));
-                }, 10000);
-                
-                script1.onload = () => {
-                    clearTimeout(timeout1);
-                    checkComplete();
-                };
-                
+                script1.onerror = reject;
                 document.head.appendChild(script1);
             } else {
                 checkComplete();
             }
             
-            // Load camera_utils.js với timeout
+            // Load camera_utils.js
             if (!window.Camera) {
                 const script2 = document.createElement('script');
                 script2.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
                 script2.onload = checkComplete;
-                script2.onerror = () => handleError(new Error('Không thể tải camera_utils.js'));
-                
-                // Timeout sau 10 giây
-                const timeout2 = setTimeout(() => {
-                    handleError(new Error('Timeout tải camera_utils.js'));
-                }, 10000);
-                
-                script2.onload = () => {
-                    clearTimeout(timeout2);
-                    checkComplete();
-                };
-                
+                script2.onerror = reject;
                 document.head.appendChild(script2);
             } else {
                 checkComplete();
             }
             
-            // Load drawing_utils.js với timeout
+            // Load drawing_utils.js
             if (!window.drawingUtils) {
                 const script3 = document.createElement('script');
                 script3.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js';
                 script3.onload = checkComplete;
-                script3.onerror = () => handleError(new Error('Không thể tải drawing_utils.js'));
-                
-                // Timeout sau 10 giây
-                const timeout3 = setTimeout(() => {
-                    handleError(new Error('Timeout tải drawing_utils.js'));
-                }, 10000);
-                
-                script3.onload = () => {
-                    clearTimeout(timeout3);
-                    checkComplete();
-                };
-                
+                script3.onerror = reject;
                 document.head.appendChild(script3);
             } else {
                 checkComplete();
             }
         });
     }
-    
     
     async startCamera() {
         const selectedIndex = this.cameraSelect.value;
@@ -225,9 +177,10 @@ class MediaPipeCameraManager {
         try {
             // Load MediaPipe scripts
             await this.loadMediaPipeScripts();
+            
+            // Set up MediaPipe aliases
             this.mpFaceMesh = window.mpFaceMesh || window;
             this.drawingUtils = window.drawingUtils || window;
-            console.log('MediaPipe loaded successfully');
             
             let constraints;
             if (selectedIndex === 'default') {
@@ -278,19 +231,13 @@ class MediaPipeCameraManager {
         } catch (error) {
             console.error('Lỗi khởi động camera:', error);
             let errorMessage = 'Không thể khởi động camera. ';
-            
-            if (error.message && error.message.includes('MediaPipe')) {
-                errorMessage += 'MediaPipe không thể tải. Vui lòng kiểm tra kết nối internet và thử lại.';
-            } else if (error.name === 'NotAllowedError') {
+            if (error.name === 'NotAllowedError') {
                 errorMessage += 'Vui lòng cấp quyền truy cập camera.';
             } else if (error.name === 'NotFoundError') {
                 errorMessage += 'Không tìm thấy camera.';
-            } else if (error.message && error.message.includes('HTTPS')) {
-                errorMessage += 'MediaPipe cần HTTPS hoặc localhost để hoạt động.';
             } else {
-                errorMessage += 'Vui lòng kiểm tra quyền truy cập và kết nối internet.';
+                errorMessage += 'Vui lòng kiểm tra quyền truy cập.';
             }
-            
             this.showError(errorMessage);
         }
     }

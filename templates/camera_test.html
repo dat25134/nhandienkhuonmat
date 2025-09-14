@@ -167,7 +167,9 @@
                 this.debug = document.getElementById('debug');
                 this.stream = null;
                 this.detecting = false;
-                this.faceApiLoaded = false;
+                this.mediaPipeLoaded = false;
+                this.mesh = null;
+                this.camera = null;
                 
                 this.init();
             }
@@ -226,9 +228,9 @@
                     this.log('Đang khởi động camera...');
                     this.status.textContent = 'Đang khởi động camera...';
                     
-                    // Load face-api.js
-                    if (!window.faceapi) {
-                        await this.loadFaceApi();
+                    // Load MediaPipe
+                    if (!window.mpFaceMesh) {
+                        await this.loadMediaPipe();
                     }
                     
                     // Start camera
@@ -260,32 +262,80 @@
                     
                 } catch (error) {
                     this.log('Lỗi camera: ' + error.message);
-                    this.status.textContent = 'Lỗi: ' + error.message;
+                    let errorMessage = 'Lỗi: ';
+                    
+                    if (error.message && error.message.includes('MediaPipe')) {
+                        errorMessage += 'MediaPipe không thể tải. Vui lòng kiểm tra kết nối internet và thử lại.';
+                    } else if (error.message && error.message.includes('HTTPS')) {
+                        errorMessage += 'MediaPipe cần HTTPS hoặc localhost để hoạt động.';
+                    } else {
+                        errorMessage += error.message;
+                    }
+                    
+                    this.status.textContent = errorMessage;
                 }
             }
             
-            async loadFaceApi() {
+            async loadMediaPipe() {
                 return new Promise((resolve, reject) => {
-                    if (window.faceapi) {
+                    // Kiểm tra HTTPS requirement
+                    if (!window.isSecureContext && location.hostname !== 'localhost') {
+                        reject(new Error('MediaPipe cần HTTPS hoặc localhost để hoạt động'));
+                        return;
+                    }
+                    
+                    // Kiểm tra xem MediaPipe đã được load chưa
+                    if (window.mpFaceMesh && window.drawingUtils && window.Camera) {
+                        this.mediaPipeLoaded = true;
+                        this.log('MediaPipe loaded successfully');
                         resolve();
                         return;
                     }
                     
-                    const script = document.createElement('script');
-                    script.src = '/static/face-api/dist/face-api.js';
-                    script.onload = async () => {
-                        try {
-                            await faceapi.nets.tinyFaceDetector.loadFromUri('/static/face-api/model');
-                            this.faceApiLoaded = true;
-                            this.log('Face-api loaded successfully');
+                    let loadedCount = 0;
+                    const totalScripts = 3;
+                    
+                    const checkComplete = () => {
+                        loadedCount++;
+                        if (loadedCount === totalScripts) {
+                            this.mediaPipeLoaded = true;
+                            this.log('MediaPipe loaded successfully');
                             resolve();
-                        } catch (e) {
-                            this.log('Lỗi load face-api model: ' + e.message);
-                            reject(e);
                         }
                     };
-                    script.onerror = reject;
-                    document.head.appendChild(script);
+                    
+                    // Load face_mesh.js
+                    if (!window.mpFaceMesh) {
+                        const script1 = document.createElement('script');
+                        script1.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js';
+                        script1.onload = checkComplete;
+                        script1.onerror = reject;
+                        document.head.appendChild(script1);
+                    } else {
+                        checkComplete();
+                    }
+                    
+                    // Load camera_utils.js
+                    if (!window.Camera) {
+                        const script2 = document.createElement('script');
+                        script2.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+                        script2.onload = checkComplete;
+                        script2.onerror = reject;
+                        document.head.appendChild(script2);
+                    } else {
+                        checkComplete();
+                    }
+                    
+                    // Load drawing_utils.js
+                    if (!window.drawingUtils) {
+                        const script3 = document.createElement('script');
+                        script3.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js';
+                        script3.onload = checkComplete;
+                        script3.onerror = reject;
+                        document.head.appendChild(script3);
+                    } else {
+                        checkComplete();
+                    }
                 });
             }
             
@@ -299,82 +349,126 @@
                 this.log(`Overlay setup: ${rect.width}x${rect.height}`);
             }
             
-            startFaceDetection() {
-                if (!this.faceApiLoaded) {
-                    this.log('Face-api chưa load');
+            async startFaceDetection() {
+                if (!this.mediaPipeLoaded) {
+                    this.log('MediaPipe chưa load');
                     return;
                 }
                 
                 this.detecting = true;
-                this.log('Bắt đầu phát hiện khuôn mặt...');
+                this.log('Bắt đầu phát hiện khuôn mặt với MediaPipe...');
                 
-                const detectFaces = async () => {
-                    if (!this.detecting || !this.video || this.video.readyState < 2) {
-                        requestAnimationFrame(detectFaces);
-                        return;
-                    }
+                try {
+                    // Set up MediaPipe aliases
+                    const mpFaceMesh = window.mpFaceMesh || window;
+                    const drawingUtils = window.drawingUtils || window;
                     
-                    try {
-                        const detections = await faceapi.detectAllFaces(this.video, new faceapi.TinyFaceDetectorOptions({
-                            inputSize: 416,
-                            scoreThreshold: 0.3
-                        }));
-                        
-                        this.drawFaces(detections);
-                        
-                        if (detections.length > 0) {
-                            this.status.textContent = `Phát hiện ${detections.length} khuôn mặt`;
-                        } else {
-                            this.status.textContent = 'Không phát hiện khuôn mặt';
-                        }
-                        
-                    } catch (error) {
-                        this.log('Lỗi phát hiện: ' + error.message);
-                    }
+                    // Khởi tạo FaceMesh
+                    this.mesh = new mpFaceMesh.FaceMesh({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+                    });
                     
-                    requestAnimationFrame(detectFaces);
-                };
-                
-                detectFaces();
+                    this.mesh.setOptions({ 
+                        maxNumFaces: 1, 
+                        refineLandmarks: true, 
+                        minDetectionConfidence: 0.6, 
+                        minTrackingConfidence: 0.6 
+                    });
+                    
+                    this.mesh.onResults((results) => this.onResults(results));
+                    
+                    // Khởi tạo Camera
+                    this.camera = new Camera(this.video, {
+                        onFrame: async () => { 
+                            await this.mesh.send({ image: this.video }); 
+                        },
+                        width: 720, 
+                        height: 960
+                    });
+                    
+                    await this.camera.start();
+                    this.log('MediaPipe camera started');
+                    
+                } catch (error) {
+                    this.log('Lỗi khởi tạo MediaPipe: ' + error.message);
+                    this.status.textContent = 'Lỗi MediaPipe: ' + error.message;
+                }
             }
             
-            drawFaces(detections) {
+            onResults(results) {
                 const ctx = this.overlay.getContext('2d');
-                if (!ctx) return;
-                
-                // Clear canvas
                 ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
+                ctx.drawImage(results.image, 0, 0, this.overlay.width, this.overlay.height);
                 
-                if (detections.length === 0) return;
+                const landmarks = results.multiFaceLandmarks && results.multiFaceLandmarks[0];
+                if (!landmarks) {
+                    this.status.textContent = 'Không phát hiện khuôn mặt';
+                    return;
+                }
                 
-                // Calculate scale
-                const videoWidth = this.video.videoWidth;
-                const videoHeight = this.video.videoHeight;
-                const scaleX = this.overlay.width / videoWidth;
-                const scaleY = this.overlay.height / videoHeight;
+                // Vẽ oval nhẹ
+                const mpFaceMesh = window.mpFaceMesh || window;
+                const drawingUtils = window.drawingUtils || window;
                 
-                // Draw face rectangles
-                ctx.strokeStyle = '#00ff00';
-                ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-                ctx.lineWidth = 3;
+                drawingUtils.drawConnectors(ctx, landmarks, mpFaceMesh.FACEMESH_FACE_OVAL, { 
+                    lineWidth: 2.0,
+                    color: 'rgba(0, 255, 0, 0.8)'
+                });
                 
-                detections.forEach((detection, index) => {
-                    const box = detection.box;
-                    const x = box.x * scaleX;
-                    const y = box.y * scaleY;
-                    const width = box.width * scaleX;
-                    const height = box.height * scaleY;
+                // Vẽ khung khuôn mặt
+                const faceBox = this.getFaceBox(landmarks);
+                if (faceBox) {
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(faceBox.x, faceBox.y, faceBox.width, faceBox.height);
                     
-                    // Draw rectangle
-                    ctx.strokeRect(x, y, width, height);
-                    ctx.fillRect(x, y, width, height);
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+                    ctx.fillRect(faceBox.x, faceBox.y, faceBox.width, faceBox.height);
                     
-                    // Draw text
                     ctx.fillStyle = '#00ff00';
                     ctx.font = '16px Arial';
-                    ctx.fillText(`Face ${index + 1}`, x, y - 5);
-                });
+                    ctx.fillText('Face Detected', faceBox.x, faceBox.y - 5);
+                }
+                
+                this.status.textContent = 'Phát hiện 1 khuôn mặt';
             }
+            
+            getFaceBox(landmarks) {
+                if (!landmarks || landmarks.length < 468) return null;
+                
+                try {
+                    let minX = 1, maxX = 0, minY = 1, maxY = 0;
+                    
+                    // Sử dụng các điểm quan trọng của khuôn mặt
+                    const importantPoints = [
+                        10, 152, 234, 454, // Các điểm góc
+                        33, 263, // Mắt
+                        1, 2, 3, 4, 5, // Mũi
+                        61, 84, 17, 18, 19, 20, 21, // Miệng
+                        172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323 // Jawline
+                    ];
+                    
+                    importantPoints.forEach(index => {
+                        if (landmarks[index]) {
+                            minX = Math.min(minX, landmarks[index].x);
+                            maxX = Math.max(maxX, landmarks[index].x);
+                            minY = Math.min(minY, landmarks[index].y);
+                            maxY = Math.max(maxY, landmarks[index].y);
+                        }
+                    });
+                    
+                    const width = (maxX - minX) * this.overlay.width;
+                    const height = (maxY - minY) * this.overlay.height;
+                    const x = minX * this.overlay.width;
+                    const y = minY * this.overlay.height;
+                    
+                    return { x, y, width, height };
+                } catch (error) {
+                    console.warn('Lỗi tính toán face box:', error);
+                    return null;
+                }
+            }
+            
             
             testOverlay() {
                 this.log('Testing overlay...');
@@ -407,6 +501,16 @@
                 if (this.stream) {
                     this.stream.getTracks().forEach(track => track.stop());
                     this.stream = null;
+                }
+                
+                if (this.camera) {
+                    this.camera.stop();
+                    this.camera = null;
+                }
+                
+                if (this.mesh) {
+                    this.mesh.close();
+                    this.mesh = null;
                 }
                 
                 this.video.srcObject = null;
