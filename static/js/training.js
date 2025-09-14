@@ -103,7 +103,7 @@ class TrainingApp {
                 return;
             }
             
-            const img = window.cameraTest.captureImage();
+            const img = window.cameraTest.captureImagePure();
             this.capturedImages[currentAngle] = img;
             
             this.renderCapturedPreview();

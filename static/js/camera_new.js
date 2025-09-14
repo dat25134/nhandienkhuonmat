@@ -311,22 +311,35 @@ class MediaPipeCameraManager {
             
             this.mesh.onResults((results) => this.onResults(results));
             
-            // Khởi tạo Camera
-            this.camera = new Camera(this.video, {
-                onFrame: async () => { 
-                    await this.mesh.send({ image: this.video }); 
-                },
-                width: 720, 
-                height: 960
-            });
-            
-            await this.camera.start();
+            // Sử dụng requestAnimationFrame thay vì MediaPipe Camera
+            // để tránh việc MediaPipe xử lý ảnh
+            this.startFaceDetectionLoop();
             this.detecting = true;
             
         } catch (error) {
             console.error('Lỗi khởi tạo MediaPipe:', error);
             this.showError('Không thể khởi động MediaPipe');
         }
+    }
+    
+    startFaceDetectionLoop() {
+        const detectFaces = async () => {
+            if (!this.detecting || !this.video || this.video.readyState < 2) {
+                requestAnimationFrame(detectFaces);
+                return;
+            }
+            
+            try {
+                // Gửi ảnh trực tiếp từ video element (không qua MediaPipe Camera)
+                await this.mesh.send({ image: this.video });
+            } catch (error) {
+                console.warn('Lỗi phát hiện khuôn mặt:', error);
+            }
+            
+            requestAnimationFrame(detectFaces);
+        };
+        
+        detectFaces();
     }
     
     onResults(results) {
@@ -462,10 +475,11 @@ class MediaPipeCameraManager {
             this.stream = null;
         }
         
-        if (this.camera) {
-            this.camera.stop();
-            this.camera = null;
-        }
+        // Không cần stop MediaPipe Camera vì không sử dụng nó nữa
+        // if (this.camera) {
+        //     this.camera.stop();
+        //     this.camera = null;
+        // }
         
         if (this.mesh) {
             this.mesh.close();
@@ -511,11 +525,63 @@ class MediaPipeCameraManager {
         }
         
         const context = this.canvas.getContext('2d');
+        
+        // Đảm bảo canvas có kích thước chính xác với video gốc
         this.canvas.width = this.video.videoWidth;
         this.canvas.height = this.video.videoHeight;
-        context.drawImage(this.video, 0, 0);
         
-        return this.canvas.toDataURL('image/jpeg', 0.8);
+        // Vẽ trực tiếp từ video element gốc (không qua MediaPipe, không qua overlay)
+        // Đảm bảo ảnh hoàn toàn nguyên gốc
+        context.drawImage(this.video, 0, 0, this.video.videoWidth, this.video.videoHeight);
+        
+        // Trả về ảnh gốc với chất lượng cao nhất
+        return this.canvas.toDataURL('image/jpeg', 0.95);
+    }
+    
+    // Method để capture ảnh trực tiếp từ video stream (không qua canvas)
+    captureImageDirect() {
+        if (!this.stream) {
+            throw new Error('Camera chưa được khởi động');
+        }
+        
+        // Tạo canvas tạm thời để capture
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // Set kích thước canvas tạm thời theo video gốc
+        tempCanvas.width = this.video.videoWidth;
+        tempCanvas.height = this.video.videoHeight;
+        
+        // Vẽ trực tiếp từ video element gốc (không qua MediaPipe)
+        tempCtx.drawImage(this.video, 0, 0, this.video.videoWidth, this.video.videoHeight);
+        
+        // Trả về ảnh gốc với chất lượng cao nhất
+        return tempCanvas.toDataURL('image/jpeg', 0.95);
+    }
+    
+    // Method capture ảnh hoàn toàn nguyên gốc (không qua bất kỳ xử lý nào)
+    captureImagePure() {
+        if (!this.stream) {
+            throw new Error('Camera chưa được khởi động');
+        }
+        
+        // Tạo canvas tạm thời với kích thước chính xác
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // Lấy kích thước thực tế của video
+        const videoWidth = this.video.videoWidth;
+        const videoHeight = this.video.videoHeight;
+        
+        // Set kích thước canvas chính xác
+        tempCanvas.width = videoWidth;
+        tempCanvas.height = videoHeight;
+        
+        // Vẽ trực tiếp từ video element (không resize, không crop)
+        tempCtx.drawImage(this.video, 0, 0, videoWidth, videoHeight);
+        
+        // Trả về ảnh hoàn toàn nguyên gốc
+        return tempCanvas.toDataURL('image/jpeg', 1.0); // Chất lượng tối đa
     }
     
     // Lấy góc khuôn mặt hiện tại

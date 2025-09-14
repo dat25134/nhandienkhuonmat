@@ -114,7 +114,7 @@ class FaceRecognitionApp {
             const images = [];
             if (this.capturedImages && this.capturedImages.length > 0) images.push(...this.capturedImages);
             if (images.length === 0 && window.cameraManager && window.cameraManager.stream) {
-                const one = window.cameraManager.captureImage();
+                const one = window.cameraManager.captureImagePure();
                 images.push(one);
                 this.capturedImages.push(one);
                 this.renderCapturedPreview();
@@ -334,7 +334,7 @@ class FaceRecognitionApp {
             this.showError('Bạn đã chụp tối đa 5 ảnh');
             return;
         }
-        const img = window.cameraManager.captureImage();
+        const img = window.cameraManager.captureImagePure();
         this.capturedImages.push(img);
         this.renderCapturedPreview();
     }

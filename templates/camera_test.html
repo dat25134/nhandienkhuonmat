@@ -398,7 +398,9 @@
             onResults(results) {
                 const ctx = this.overlay.getContext('2d');
                 ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
-                ctx.drawImage(results.image, 0, 0, this.overlay.width, this.overlay.height);
+                
+                // KHÔNG vẽ lại ảnh từ MediaPipe - chỉ vẽ overlay landmarks
+                // Để giữ nguyên ảnh gốc từ video cho việc capture
                 
                 const landmarks = results.multiFaceLandmarks && results.multiFaceLandmarks[0];
                 if (!landmarks) {
@@ -406,7 +408,7 @@
                     return;
                 }
                 
-                // Vẽ oval nhẹ
+                // Vẽ oval nhẹ trên overlay (không ảnh hưởng đến ảnh gốc)
                 const mpFaceMesh = window.mpFaceMesh || window;
                 const drawingUtils = window.drawingUtils || window;
                 
@@ -415,7 +417,7 @@
                     color: 'rgba(0, 255, 0, 0.8)'
                 });
                 
-                // Vẽ khung khuôn mặt
+                // Vẽ khung khuôn mặt trên overlay
                 const faceBox = this.getFaceBox(landmarks);
                 if (faceBox) {
                     ctx.strokeStyle = '#00ff00';
