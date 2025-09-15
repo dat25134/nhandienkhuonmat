@@ -23,10 +23,14 @@ class WelcomeCameraManager {
         this.lastX = null;
         this.cooling = false;
         
-        // Auto scan settings (like index.html)
+        // Auto scan settings (optimized for better performance)
         this.detectionInterval = null;
         this.lastCheckinTime = 0;
-        this.checkinCooldown = 5000; // 5 seconds cooldown between check-ins
+        this.checkinCooldown = 1000; // 1 second cooldown between check-ins (reduced from 5s)
+        
+        // Queue system for handling multiple people
+        this.processingQueue = [];
+        this.isProcessing = false;
         
         // Callback for check-in events
         this.onCheckin = null;
@@ -411,83 +415,119 @@ class WelcomeCameraManager {
     }
     
     startAutoScan() {
-        // Auto scan every 3 seconds like index.html
+        // Auto scan every 1 second for better responsiveness
         this.detectionInterval = setInterval(() => {
             if (this.detecting && this.video && this.video.readyState >= 2) {
                 this.triggerCheckin();
             }
-        }, 3000); // Every 3 seconds like index.html
+        }, 1000); // Every 1 second (reduced from 3s for better responsiveness)
     }
     
-    // Method to trigger check-in API call (same logic as index.html)
+    // Method to trigger check-in API call (optimized for better performance)
     async triggerCheckin() {
         try {
             const now = Date.now();
-            if (now - this.lastCheckinTime < this.checkinCooldown) {
-                return;
+            
+            // Add to queue instead of blocking
+            const checkinTask = {
+                timestamp: now,
+                id: Math.random().toString(36).substr(2, 9)
+            };
+            
+            this.processingQueue.push(checkinTask);
+            
+            // Process queue if not already processing
+            if (!this.isProcessing) {
+                this.processQueue();
             }
             
-            this.lastCheckinTime = now;
-            
-            // Capture current frame from video (same as index.html)
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = this.video.videoWidth;
-            canvas.height = this.video.videoHeight;
-            ctx.drawImage(this.video, 0, 0);
-            
-            // Convert to base64
-            const base64Image = canvas.toDataURL('image/jpeg', 0.8);
-            
-            // Step 1: Check if face exists in image (same as index.html)
-            const hasFace = await this.detectFaceInImage(base64Image);
-            if (!hasFace) {
-                return;
-            }
-            
-            // Step 2: Call /api/recognize/multi to recognize faces (same as index.html)
-            const response = await fetch('/api/recognize/multi', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    images: [base64Image]
-                })
-            });
-            
-            if (!response.ok) {
-                return null;
-            }
-            
-            const result = await response.json();
-            
-            if (result.recognized && result.faces && result.faces.length > 0) {
-                // Step 3: Process each recognized face (same logic as index.html)
-                const newFaces = []; // Only show guests who haven't checked in
-                for (const face of result.faces) {
-                    const checkinResult = await this.autoCheckin(face);
-                    if (checkinResult) {
-                        newFaces.push(face);
-                        // Call the callback if set
-                        if (this.onCheckin && typeof this.onCheckin === 'function') {
-                            this.onCheckin(checkinResult);
-                        }
-                    }
-                }
-                
-                // Only show notification if there are new check-ins
-                if (newFaces.length > 0) {
-                    return { ...result, faces: newFaces, count: newFaces.length };
-                } else {
-                    return null;
-                }
-            } else {
-                return null;
-            }
         } catch (error) {
             console.error('[WELCOME_CAMERA] Error during check-in:', error);
-            return null;
+        }
+    }
+    
+    // Process the check-in queue
+    async processQueue() {
+        if (this.isProcessing || this.processingQueue.length === 0) {
+            return;
+        }
+        
+        this.isProcessing = true;
+        
+        try {
+            while (this.processingQueue.length > 0) {
+                const task = this.processingQueue.shift();
+                const now = Date.now();
+                
+                // Check cooldown for this specific task
+                if (now - this.lastCheckinTime < this.checkinCooldown) {
+                    // Put task back to front of queue and wait
+                    this.processingQueue.unshift(task);
+                    await new Promise(resolve => setTimeout(resolve, this.checkinCooldown));
+                    continue;
+                }
+                
+                this.lastCheckinTime = now;
+                
+                // Capture current frame from video
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = this.video.videoWidth;
+                canvas.height = this.video.videoHeight;
+                ctx.drawImage(this.video, 0, 0);
+                
+                // Convert to base64
+                const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // Step 1: Check if face exists in image
+                const hasFace = await this.detectFaceInImage(base64Image);
+                if (!hasFace) {
+                    continue;
+                }
+                
+                // Step 2: Call /api/recognize/multi to recognize faces
+                const response = await fetch('/api/recognize/multi', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        images: [base64Image]
+                    })
+                });
+                
+                if (!response.ok) {
+                    continue;
+                }
+                
+                const result = await response.json();
+                
+                if (result.recognized && result.faces && result.faces.length > 0) {
+                    // Step 3: Process each recognized face in parallel
+                    const checkinPromises = result.faces.map(face => this.autoCheckin(face));
+                    const checkinResults = await Promise.allSettled(checkinPromises);
+                    
+                    const newFaces = [];
+                    checkinResults.forEach((checkinResult, index) => {
+                        if (checkinResult.status === 'fulfilled' && checkinResult.value) {
+                            newFaces.push(result.faces[index]);
+                            // Call the callback if set
+                            if (this.onCheckin && typeof this.onCheckin === 'function') {
+                                this.onCheckin(checkinResult.value);
+                            }
+                        }
+                    });
+                    
+                    // Only show notification if there are new check-ins
+                    if (newFaces.length > 0) {
+                        console.log(`[WELCOME_CAMERA] Processed ${newFaces.length} new check-ins`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[WELCOME_CAMERA] Error processing queue:', error);
+        } finally {
+            this.isProcessing = false;
         }
     }
     
@@ -591,6 +631,10 @@ class WelcomeCameraManager {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
+        
+        // Clear processing queue
+        this.processingQueue = [];
+        this.isProcessing = false;
         
         // Dừng detection nhưng KHÔNG đóng FaceMesh (same as index.html)
         this.detecting = false;
