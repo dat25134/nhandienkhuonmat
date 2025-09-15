@@ -78,7 +78,7 @@ class TrainingApp {
         // Auto capture event listeners
         const startCameraButton = document.getElementById('startCamera');
         if (startCameraButton) {
-            startCameraButton.addEventListener('click', () => this.startAutoCapture());
+            // startCameraButton.addEventListener('click', () => this.startAutoCapture());
         }
         
         const stopCameraButton = document.getElementById('stopCamera');
@@ -396,6 +396,9 @@ class TrainingApp {
                 
                 // Tạo UI hướng dẫn auto capture
                 this.createAutoCaptureUI();
+                
+                // QUAN TRỌNG: Bắt đầu lại face detection loop
+                this.startFaceDetectionLoop();
                 
             } catch (error) {
                 console.error('Lỗi khi bắt đầu auto capture:', error);
