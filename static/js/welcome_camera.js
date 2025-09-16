@@ -606,7 +606,8 @@ class WelcomeCameraManager {
                 confidence: confidence,
                 checkin_time: checkinData.checkin_time,
                 images: userData.images || [],
-                image: userData.images?.[0] || ''
+                avatar: userData.avatar || '',
+                image: (userData.avatar || (userData.images && userData.images[0]) || '')
             };
             
             return checkinResult;

@@ -246,6 +246,7 @@ class FaceRecognitionApp {
             const displayName = faceData.name || '';
             let gender = faceData.gender || '';
             const images = faceData.images || [];
+            const avatar = faceData.avatar || '';
             // Thông tin hồ sơ để ghi vào checkin
             let phone = '';
             let company = '';
@@ -295,16 +296,18 @@ class FaceRecognitionApp {
                     const userData = await userRes.json();
                     
                     // Thêm vào danh sách chào mừng với thông tin đầy đủ
+                    const imageToShow = avatar || images[0] || '';
                     this.addWelcomeMessage(
                         displayName, 
                         gender, 
-                        images[0] || '', 
+                        imageToShow, 
                         userData.company || company || '', 
                         userData.position || position || ''
                     );
                 } catch (e) {
                     // Fallback nếu không lấy được thông tin đầy đủ
-                    this.addWelcomeMessage(displayName, gender, images[0] || '');
+                    const imageToShow = avatar || images[0] || '';
+                    this.addWelcomeMessage(displayName, gender, imageToShow);
                 }
                 
                 console.log('Auto check-in thành công cho:', displayName);
@@ -889,10 +892,12 @@ class FaceRecognitionApp {
         console.log('Đã reset thông tin khách mời');
     }
     
-    // Chuẩn hóa URL ảnh giống màn /manage
+    // Chuẩn hóa URL ảnh (hỗ trợ cả images và avatars)
     resolveImageUrl(path) {
         if (!path || typeof path !== 'string') return '';
-        const src = path.startsWith('data/images') ? `/media/${path}` : `/${path}`;
+        let src = `/${path}`;
+        if (path.startsWith('data/images')) src = `/media/${path}`;
+        if (path.startsWith('data/avatars')) src = `/avatar/${path}`;
         return src.replace('//', '/');
     }
 
@@ -948,6 +953,7 @@ class FaceRecognitionApp {
             const cache = {};
             const withImages = await Promise.all(top.map(async c => {
                 let firstImage = '';
+                let avatar = '';
                 try {
                     if (typeof c.user_id === 'number') {
                         if (!cache[c.user_id]) {
@@ -957,6 +963,7 @@ class FaceRecognitionApp {
                         const u = cache[c.user_id] || {};
                         const imgs = Array.isArray(u.images) ? u.images : [];
                         firstImage = imgs.length > 0 ? imgs[0] : '';
+                        avatar = typeof u.avatar === 'string' ? u.avatar : '';
                     }
                 } catch (e) { /* noop */ }
                 return {
@@ -965,7 +972,7 @@ class FaceRecognitionApp {
                     gender: c.gender || '',
                     title: this.getTitle(c.gender || ''),
                     message: `Chúng tôi rất vui mừng được chào đón ${this.getTitle(c.gender || '').toLowerCase()} tham gia sự kiện! Hãy tận hưởng những phiên thảo luận bổ ích và cơ hội kết nối tuyệt vời.`,
-                    imageUrl: this.resolveImageUrl(firstImage),
+                    imageUrl: this.resolveImageUrl(avatar || firstImage),
                     timestamp: new Date(c.checked_at),
                     company: c.company || '',
                     position: c.position || ''

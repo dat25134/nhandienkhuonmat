@@ -73,9 +73,12 @@
                     <div class="row">
                         <!-- <button id="captureFace" class="btn btn-success" disabled>Chụp khuôn mặt</button> -->
                         <button id="clearCaptured" class="btn btn-secondary">Chụp lại</button>
-                        <input id="uploadImages" type="file" accept="image/*" multiple />
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <img id="avatarPreviewTr" src="" alt="Avatar" style="width:48px;height:48px;object-fit:cover;border-radius:50%;border:1px solid #ddd;display:none;" onerror="this.style.display='none'">
+                            <input id="uploadAvatar" type="file" accept="image/*" />
+                        </div>
                     </div>
-                    <small class="hint">(Chụp bắt buộc 3 ảnh: chính diện, quay trái, quay phải)</small>
+                    <small class="hint">(Chụp bắt buộc 3 ảnh: chính diện, quay trái, quay phải; Avatar là tùy chọn)</small>
                     <button id="saveUser" class="btn btn-primary" disabled>Lưu người dùng</button>
                 </div>
 

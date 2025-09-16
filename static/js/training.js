@@ -19,6 +19,7 @@ class TrainingApp {
             right: null   // Ảnh quay phải
         };
         this.uploadedImages = [];
+        this.uploadedAvatarFile = null;
         
         // Auto capture state
         this.autoCaptureEnabled = false;
@@ -67,9 +68,24 @@ class TrainingApp {
             this.userSeatNumber.addEventListener('input', () => this.validateForm());
         }
         
-        const uploadInput = document.getElementById('uploadImages');
-        if (uploadInput) {
-            uploadInput.addEventListener('change', (e) => this.handleUpload(e));
+        // Thay upload ảnh training bằng upload avatar (tùy chọn)
+        const uploadAvatar = document.getElementById('uploadAvatar');
+        const avatarPreview = document.getElementById('avatarPreviewTr');
+        if (uploadAvatar) {
+            uploadAvatar.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                this.uploadedAvatarFile = file || null;
+                if (file && avatarPreview) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        avatarPreview.src = reader.result;
+                        avatarPreview.style.display = 'inline-block';
+                    };
+                    reader.readAsDataURL(file);
+                } else if (avatarPreview) {
+                    avatarPreview.style.display = 'none';
+                }
+            });
         }
         if (this.clearCapturedButton) {
             this.clearCapturedButton.addEventListener('click', () => this.retakePhotos());
@@ -91,7 +107,7 @@ class TrainingApp {
         const hasName = this.userNameInput.value.trim() !== '';
         const hasSeatNumber = this.userSeatNumber && this.userSeatNumber.value.trim() !== '';
         const hasAllRequiredImages = this.capturedImages.front && this.capturedImages.left && this.capturedImages.right;
-        const hasUploadedImages = this.uploadedImages && this.uploadedImages.length > 0;
+        const hasUploadedImages = false; // Không còn dùng upload ảnh training
         const hasAnyCapturedImages = this.capturedImages.front || this.capturedImages.left || this.capturedImages.right;
         
         // Debug log để kiểm tra
@@ -273,11 +289,7 @@ class TrainingApp {
                 images.push(this.capturedImages.right);
             }
             
-            // Thêm ảnh upload nếu có
-            if (this.uploadedImages && this.uploadedImages.length > 0) {
-                const remain = 5 - images.length;
-                if (remain > 0) images.push(...this.uploadedImages.slice(0, remain));
-            }
+            // Bỏ upload ảnh training; chỉ dùng auto capture 3 góc
 
             const response = await fetch('/api/users/multi', {
                 method: 'POST',
@@ -299,6 +311,18 @@ class TrainingApp {
             const result = await response.json();
             
             if (response.ok) {
+                // Nếu có avatar, upload ngay sau khi tạo user
+                const newUserId = result.user_id || result.id;
+                if (newUserId && this.uploadedAvatarFile) {
+                    try {
+                        const fd = new FormData();
+                        fd.append('file', this.uploadedAvatarFile);
+                        const up = await fetch(`/api/users/${newUserId}/avatar`, { method: 'POST', body: fd });
+                        if (!up.ok) {
+                            console.warn('Upload avatar thất bại');
+                        }
+                    } catch (_) {}
+                }
                 this.showTrainingResult('Thêm người dùng thành công!', result.message || '');
                 this.resetForm();
             } else {

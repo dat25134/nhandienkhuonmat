@@ -3,4 +3,5 @@ key.pem
 venv/
 data/db/
 data/images/
+data/avatars/
 img_align_celeba/

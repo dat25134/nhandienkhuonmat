@@ -139,11 +139,16 @@
                         <button id="deleteUser" class="btn btn-secondary">Xóa khách</button>
                     </div>
 
+                    <h3>Ảnh đại diện</h3>
+                    <div class="row" style="margin-bottom:10px; align-items: center; gap: 12px;">
+                        <img id="avatarPreview" src="" alt="Avatar" style="width:80px;height:80px;object-fit:cover;border-radius:50%;border:1px solid #ddd;display:none;" onerror="this.style.display='none'">
+                        <input id="avatarFile" type="file" accept="image/*">
+                        <button id="uploadAvatarBtn" class="btn btn-success">Cập nhật avatar</button>
+                    </div>
+
                     <h3>Ảnh training</h3>
                     <div id="imageGrid" class="grid" style="margin-bottom:10px;"></div>
                     <div class="row">
-                        <input id="addImages" type="file" accept="image/*" multiple>
-                        <button id="uploadImagesBtn" class="btn btn-success">Thêm ảnh</button>
                         <button id="removeSelectedBtn" class="btn btn-secondary">Xóa ảnh đã chọn</button>
                     </div>
                 </div>

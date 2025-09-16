@@ -28,8 +28,10 @@ class ManageApp {
         this.clearBtn.addEventListener('click', () => this.clearImport());
         document.getElementById('saveProfile').addEventListener('click', () => this.saveProfile());
         document.getElementById('deleteUser').addEventListener('click', () => this.deleteUser());
-        document.getElementById('uploadImagesBtn').addEventListener('click', () => this.uploadImages());
+        // Đã bỏ upload ảnh training ở màn Manage
         document.getElementById('removeSelectedBtn').addEventListener('click', () => this.removeSelected());
+        const uploadAvatarBtn = document.getElementById('uploadAvatarBtn');
+        if (uploadAvatarBtn) uploadAvatarBtn.addEventListener('click', () => this.uploadAvatar());
     }
 
     async loadUsers() {
@@ -77,6 +79,18 @@ class ManageApp {
         document.getElementById('editDepartment').value = u.department || '';
         document.getElementById('editPosition').value = u.position || '';
         document.getElementById('editSeatNumber').value = u.seat_number || '';
+        // Render avatar preview
+        const avatarEl = document.getElementById('avatarPreview');
+        if (avatarEl) {
+            const p = u.avatar || '';
+            if (p) {
+                const src = p.startsWith('data/avatars') ? `/avatar/${p}` : `/${p}`;
+                avatarEl.src = src.replace('//','/');
+                avatarEl.style.display = 'inline-block';
+            } else {
+                avatarEl.style.display = 'none';
+            }
+        }
         this.renderImages(u.images || []);
     }
 
@@ -149,21 +163,7 @@ class ManageApp {
         }
     }
 
-    async uploadImages() {
-        if (!this.editingId) return;
-        const input = document.getElementById('addImages');
-        const files = Array.from(input.files || []);
-        if (files.length === 0) return;
-        const fd = new FormData();
-        files.slice(0, 5).forEach(f => fd.append('files', f));
-        const res = await fetch(`/api/users/${this.editingId}/images`, { method: 'POST', body: fd });
-        if (res.ok) {
-            alert('Đã thêm ảnh');
-            this.openEdit(this.editingId);
-        } else {
-            alert('Thêm ảnh thất bại');
-        }
-    }
+    // Đã loại bỏ chức năng upload ảnh training ở màn Manage
 
     async removeSelected() {
         if (!this.editingId || this.selectedPaths.size === 0) return;
@@ -177,6 +177,30 @@ class ManageApp {
             this.openEdit(this.editingId);
         } else {
             alert('Xóa ảnh thất bại');
+        }
+    }
+
+    async uploadAvatar() {
+        if (!this.editingId) return;
+        const input = document.getElementById('avatarFile');
+        const file = input?.files?.[0];
+        if (!file) { alert('Vui lòng chọn ảnh avatar'); return; }
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/users/${this.editingId}/avatar`, { method: 'POST', body: fd });
+        if (res.ok) {
+            const data = await res.json();
+            alert('Đã cập nhật avatar');
+            // Refresh preview
+            const avatarEl = document.getElementById('avatarPreview');
+            if (avatarEl) {
+                const p = data.avatar || '';
+                const src = p.startsWith('data/avatars') ? `/avatar/${p}` : `/${p}`;
+                avatarEl.src = src.replace('//','/');
+                avatarEl.style.display = 'inline-block';
+            }
+        } else {
+            alert('Cập nhật avatar thất bại');
         }
     }
 

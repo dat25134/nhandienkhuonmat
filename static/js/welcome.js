@@ -28,7 +28,9 @@
 
     function resolveImageUrl(path){
         if (!path || typeof path !== 'string') return '';
-        const src = path.startsWith('data/images') ? `/media/${path}` : `/${path}`;
+        let src = `/${path}`;
+        if (path.startsWith('data/images')) src = `/media/${path}`;
+        if (path.startsWith('data/avatars')) src = `/avatar/${path}`;
         return src.replace('//','/');
     }
 
@@ -48,6 +50,7 @@
         const out = [];
         for (const c of checkins) {
             let img = '';
+            let avatar = '';
             try {
                 if (typeof c.user_id === 'number'){
                     if (!cache[c.user_id]){
@@ -56,7 +59,8 @@
                     }
                     const u = cache[c.user_id] || {};
                     const imgs = Array.isArray(u.images) ? u.images : [];
-                    img = imgs.length ? imgs[0] : '';
+                    avatar = typeof u.avatar === 'string' ? u.avatar : '';
+                    img = avatar || (imgs.length ? imgs[0] : '');
                     c.name = c.name || u.name || '';
                     c.company = c.company || u.company || '';
                     c.position = c.position || u.position || '';
@@ -162,7 +166,7 @@
                     company: userData.company || '',
                     seat_number: userData.seat_number || '',
                     time: new Date(),
-                    imageUrl: resolveImageUrl(userData.image || userData.images?.[0] || '')
+                    imageUrl: resolveImageUrl(userData.avatar || userData.image || (userData.images && userData.images[0]) || '')
                 };
                 
                 // Add to queue if not already seen

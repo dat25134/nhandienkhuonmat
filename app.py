@@ -39,6 +39,7 @@ os.makedirs('models', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 os.makedirs('data/images', exist_ok=True)
 os.makedirs('data/db', exist_ok=True)
+os.makedirs('data/avatars', exist_ok=True)
 
 USERS_JSON_PATH = Path('data/db/users.json')
 _users_lock = threading.Lock()
@@ -53,6 +54,22 @@ def serve_media(relpath):
     full_path = Path(relpath).resolve()
     try:
         # If relpath is absolute or doesn't start with data/images, prepend
+        if not str(full_path).startswith(str(safe_root)):
+            full_path = (Path('.') / relpath).resolve()
+        if not str(full_path).startswith(str(safe_root)):
+            return abort(404)
+        if not full_path.exists() or not full_path.is_file():
+            return abort(404)
+        return send_file(str(full_path))
+    except Exception:
+        return abort(404)
+
+# Serve avatar files under data/avatars via /avatar/<path>
+@app.route('/avatar/<path:relpath>')
+def serve_avatar(relpath):
+    safe_root = Path('data/avatars').resolve()
+    full_path = Path(relpath).resolve()
+    try:
         if not str(full_path).startswith(str(safe_root)):
             full_path = (Path('.') / relpath).resolve()
         if not str(full_path).startswith(str(safe_root)):
@@ -215,7 +232,8 @@ def get_users():
             'gender': u.get('gender', ''),
             'company': u.get('company', ''),
             'department': u.get('department', ''),
-            'position': u.get('position', '')
+            'position': u.get('position', ''),
+            'avatar': u.get('avatar', '')
         }
         for u in users
     ])
@@ -270,6 +288,7 @@ def add_user():
                 'id': user_id,
                 'name': name,
                 'created_at': datetime.utcnow().isoformat() + 'Z',
+                'avatar': '',
                 'images': [save_path],
                 'phone': phone,
                 'gender': gender,
@@ -597,6 +616,19 @@ def decode_dataurl_to_bytes(data_url):
         print(f'Lỗi decode data url: {e}')
         return None
 
+def save_avatar_file(user_id, file_storage):
+    try:
+        now = datetime.utcnow()
+        user_dir = os.path.join('data', 'avatars', str(user_id))
+        os.makedirs(user_dir, exist_ok=True)
+        filename = secure_filename(file_storage.filename or f'avatar_{now.strftime("%Y%m%d%H%M%S%f")}.jpg')
+        save_path = os.path.join(user_dir, filename)
+        file_storage.save(save_path)
+        return save_path
+    except Exception as e:
+        print(f'Lỗi lưu avatar: {e}')
+        return None
+
 @app.route('/api/users/multi', methods=['POST'])
 def add_user_multi():
     data = request.json
@@ -645,6 +677,7 @@ def add_user_multi():
                 'id': user_id,
                 'name': name,
                 'created_at': datetime.utcnow().isoformat() + 'Z',
+                'avatar': '',
                 'images': saved_paths,
                 'phone': phone,
                 'gender': gender,
@@ -659,7 +692,7 @@ def add_user_multi():
         # Cập nhật cache encodings
         add_user_encodings_to_cache(user_id, name, saved_paths)
 
-        return jsonify({'message': 'Thêm người dùng thành công', 'images_used': used})
+        return jsonify({'message': 'Thêm người dùng thành công', 'images_used': used, 'user_id': user_id})
 
     except Exception as e:
         print(f"Lỗi thêm người dùng (multi): {e}")
@@ -702,6 +735,7 @@ def add_user_upload():
                 'id': user_id,
                 'name': name,
                 'created_at': datetime.utcnow().isoformat() + 'Z',
+                'avatar': '',
                 'images': saved_paths,
                 'phone': phone,
                 'gender': gender,
@@ -862,7 +896,8 @@ def recognize_face_multi():
                             'gender': ugender,
                             'message': build_greeting(uname, ugender),
                             'distance': d1,
-                            'images': user_info.get('images', [])
+                            'images': user_info.get('images', []),
+                            'avatar': user_info.get('avatar', '')
                         })
 
         if all_recognized:
@@ -918,7 +953,7 @@ def text_to_speech():
 @app.route('/api/users/<int:user_id>/profile', methods=['PUT'])
 def update_profile(user_id):
     data = request.json or {}
-    allowed = ['name', 'phone', 'gender', 'company', 'department', 'position', 'seat_number']
+    allowed = ['name', 'phone', 'gender', 'company', 'department', 'position', 'seat_number', 'avatar']
     update_fields = {k: sanitize_text(v if k != 'phone' else normalize_phone(v)) for k, v in data.items() if k in allowed}
     if not update_fields:
         return jsonify({'error': 'No fields to update'}), 400
@@ -986,6 +1021,25 @@ def delete_images_of_user(user_id):
     rebuild_user_cache(user_id)
     return jsonify({'removed': removed})
 
+@app.route('/api/users/<int:user_id>/avatar', methods=['POST'])
+def upload_avatar(user_id):
+    if 'file' not in request.files:
+        return jsonify({'error': 'Không có file được upload'}), 400
+    file = request.files['file']
+    if not file:
+        return jsonify({'error': 'File không hợp lệ'}), 400
+    path = save_avatar_file(user_id, file)
+    if not path:
+        return jsonify({'error': 'Không thể lưu avatar'}), 500
+    with _users_lock:
+        data = load_users_json()
+        for u in data.get('users', []):
+            if u.get('id') == user_id:
+                u['avatar'] = path
+                break
+        save_users_json(data)
+    return jsonify({'status': 'ok', 'avatar': path})
+
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
     with _users_lock:
@@ -1043,6 +1097,16 @@ def delete_all_users():
         except Exception as e:
             print(f'Lỗi xóa thư mục ảnh: {e}')
     
+    # Xóa toàn bộ thư mục avatar
+    avatars_dir = 'data/avatars'
+    if os.path.exists(avatars_dir):
+        try:
+            shutil.rmtree(avatars_dir)
+            os.makedirs(avatars_dir, exist_ok=True)
+            print(f'Đã xóa toàn bộ thư mục avatar: {avatars_dir}')
+        except Exception as e:
+            print(f'Lỗi xóa thư mục avatar: {e}')
+    
     # Xóa dữ liệu checkins
     checkins_file = 'data/db/checkins.json'
     if os.path.exists(checkins_file):
@@ -1076,21 +1140,30 @@ def checkin_user(user_id):
     # Ghi đè lần check-in mới nhất của user
     payload = request.json or {}
     now_iso = datetime.utcnow().isoformat() + 'Z'
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    # Lấy thông tin user để fill các trường thiếu
+    users_data = load_users_json()
+    user = next((u for u in users_data.get('users', []) if u.get('id') == user_id), None)
+    if not user:
+        return jsonify({'error': 'Không tìm thấy người dùng'}), 404
     with _checkins_lock:
         data = load_checkins_json()
         lst = data.get('checkins', [])
         # Xóa bản cũ nếu có
         lst = [c for c in lst if c.get('user_id') != user_id]
+        # Merge payload với dữ liệu hồ sơ user để đảm bảo đủ thông tin
         entry = {
             'user_id': user_id,
-            'name': sanitize_text(payload.get('name', '')),
-            'phone': normalize_phone(payload.get('phone', '')),
-            'gender': sanitize_text(payload.get('gender', '')),
-            'company': sanitize_text(payload.get('company', '')),
-            'department': sanitize_text(payload.get('department', '')),
-            'position': sanitize_text(payload.get('position', '')),
-            'seat_number': sanitize_text(payload.get('seat_number', '')),
+            'name': sanitize_text(payload.get('name') or user.get('name', '')),
+            'phone': normalize_phone(payload.get('phone') or user.get('phone', '')),
+            'gender': sanitize_text(payload.get('gender') or user.get('gender', '')),
+            'company': sanitize_text(payload.get('company') or user.get('company', '')),
+            'department': sanitize_text(payload.get('department') or user.get('department', '')),
+            'position': sanitize_text(payload.get('position') or user.get('position', '')),
+            'seat_number': sanitize_text(payload.get('seat_number') or user.get('seat_number', '')),
             'checked_at': now_iso,
+            'date': today,
         }
         lst.append(entry)
         data['checkins'] = lst
