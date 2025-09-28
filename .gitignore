@@ -8,6 +8,7 @@ venv/
 # Data directories
 data/db/
 data/images/
+data/avatar/
 img_align_celeba/
 
 # Environment variables

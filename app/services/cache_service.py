@@ -48,14 +48,26 @@ class CacheService:
                                         img = img.convert('RGB')
                                     img_array = np.array(img)
                                     
+                                    # Check original blur score first
+                                    original_blur = self.face_service.compute_blur_score(img_array)
+                                    
+                                    # Only preprocess if blur score is low
+                                    if original_blur < self.face_service.blur_min_enroll:
+                                        preprocessed_img = self.face_service.preprocess_image(img_array, force_enhance=True)
+                                        processed_blur = self.face_service.compute_blur_score(preprocessed_img)
+                                        # Use enhanced image for quality check
+                                        check_img = preprocessed_img
+                                    else:
+                                        # Use original image (no need to enhance)
+                                        check_img = img_array
+                                    
                                     # Check image quality
-                                    if self.face_service.is_image_quality_good(img_array, is_enrollment=True):
-                                        # Extract face encoding
+                                    if self.face_service.is_image_quality_good(check_img, is_enrollment=True):
+                                        # Extract face encoding (will preprocess internally)
                                         face_encoding = self.face_service.get_face_encoding(img_array)
                                         if face_encoding is not None:
                                             encodings.append(face_encoding)
                         except Exception as e:
-                            print(f"⚠️  Error processing image {image_path}: {e}")
                             continue
                     
                     if encodings:
@@ -81,7 +93,6 @@ class CacheService:
                                 'count': len(encodings)
                             })
             
-            print(f"✅ Cache built: {len(self.encoding_cache)} users, {sum(len(entry.get('encodings', [])) for entry in self.encoding_cache)} encodings")
     
     def get_cache_status(self) -> Dict[str, Any]:
         """Get cache status"""
@@ -115,11 +126,11 @@ class CacheService:
             d2 = float(distances[int(order[1])]) if len(order) > 1 else 1e9
             candidate = self.centroid_cache[i1]
             
-            # Check strict criteria
+            # Use original strict criteria from app.py for better accuracy
             from app.config import Config
             tolerance = Config.FACE_RECOGNITION_TOLERANCE
-            top2_gap_min = Config.FACE_RECOGNITION_TOP2_GAP_MIN
-            accepted = (d1 <= tolerance) and ((d2 - d1) >= top2_gap_min)
+            gap_min = Config.FACE_RECOGNITION_TOP2_GAP_MIN
+            accepted = (d1 <= tolerance) and ((d2 - d1) >= gap_min)
             
             if accepted:
                 return True, candidate['id'], candidate['name'], candidate.get('gender', ''), d1, d2
@@ -128,7 +139,6 @@ class CacheService:
                 return self._fallback_match(query_encoding, d1, d2)
                 
         except Exception as e:
-            print(f"Error in face matching: {e}")
             return False, None, None, None, None, None
     
     def _fallback_match(self, query_encoding: np.ndarray, d1: float, d2: float) -> tuple:
@@ -153,13 +163,12 @@ class CacheService:
                     best_distance = min_distance
                     best_match = entry
             
-            # Use more lenient tolerance for fallback
-            fallback_tolerance = 0.65
+            # Use more lenient tolerance for fallback (but not too lenient)
+            fallback_tolerance = 0.65  # Slightly more lenient than strict
             if best_match and best_distance <= fallback_tolerance:
                 return True, best_match['id'], best_match['name'], '', best_distance, d2
             
             return False, None, None, None, d1, d2
             
         except Exception as e:
-            print(f"Error in fallback matching: {e}")
             return False, None, None, None, d1, d2

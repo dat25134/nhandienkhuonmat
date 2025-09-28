@@ -18,7 +18,9 @@ class Checkin:
     def __init__(self, checkin_id: int = None, user_id: int = None, name: str = '', 
                  phone: str = '', gender: str = '', company: str = '', 
                  department: str = '', position: str = '', seat_number: str = '',
-                 checked_at: str = None, method: str = 'face_recognition'):
+                 email: str = '', avatar: str = '', notes: str = '',
+                 checked_at: str = None, method: str = 'face_recognition',
+                 confidence: float = None, distance: float = None):
         self.id = checkin_id
         self.user_id = user_id
         self.name = name
@@ -28,8 +30,13 @@ class Checkin:
         self.department = department
         self.position = position
         self.seat_number = seat_number
+        self.email = email
+        self.avatar = avatar
+        self.notes = notes
         self.checked_at = checked_at or datetime.utcnow().isoformat() + 'Z'
         self.method = method
+        self.confidence = confidence
+        self.distance = distance
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert checkin to dictionary"""
@@ -43,15 +50,25 @@ class Checkin:
             'department': self.department,
             'position': self.position,
             'seat_number': self.seat_number,
+            'email': self.email,
+            'avatar': self.avatar,
+            'notes': self.notes,
             'checked_at': self.checked_at,
-            'method': self.method
+            'method': self.method,
+            'confidence': self.confidence,
+            'distance': self.distance
         }
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Checkin':
         """Create checkin from dictionary"""
         checkin = cls()
-        checkin.id = data.get('id')
+        # Handle None ID - assign new ID if None
+        checkin_id = data.get('id')
+        if checkin_id is None:
+            checkin.id = None  # Will be assigned in save()
+        else:
+            checkin.id = checkin_id
         checkin.user_id = data.get('user_id')
         checkin.name = data.get('name', '')
         checkin.phone = data.get('phone', '')
@@ -60,8 +77,13 @@ class Checkin:
         checkin.department = data.get('department', '')
         checkin.position = data.get('position', '')
         checkin.seat_number = data.get('seat_number', '')
+        checkin.email = data.get('email', '')
+        checkin.avatar = data.get('avatar', '')
+        checkin.notes = data.get('notes', '')
         checkin.checked_at = data.get('checked_at', '')
         checkin.method = data.get('method', 'face_recognition')
+        checkin.confidence = data.get('confidence')
+        checkin.distance = data.get('distance')
         return checkin
     
     @classmethod
@@ -126,12 +148,31 @@ class Checkin:
         return None
     
     @classmethod
+    def get_today_checkin(cls, user_id: int) -> Optional['Checkin']:
+        """Get today's checkin for user"""
+        from datetime import datetime
+        # Use UTC time to match the stored timestamps
+        today = datetime.utcnow().strftime('%Y-%m-%d')
+        
+        checkins = cls.load_all()
+        for checkin in checkins:
+            if checkin.user_id == user_id and checkin.checked_at:
+                checkin_date = checkin.checked_at.split('T')[0]
+                if checkin_date == today:
+                    return checkin
+        return None
+    
+    @classmethod
     def get_next_id(cls) -> int:
         """Get next available checkin ID"""
         checkins = cls.load_all()
         if not checkins:
             return 1
-        return max(checkin.id for checkin in checkins if checkin.id) + 1
+        # Filter out None IDs and get max
+        valid_ids = [checkin.id for checkin in checkins if checkin.id is not None]
+        if not valid_ids:
+            return 1
+        return max(valid_ids) + 1
     
     def save(self):
         """Save checkin to database"""
@@ -158,3 +199,17 @@ class Checkin:
     def clear_all(cls):
         """Clear all checkins"""
         cls.save_all([])
+    
+    @classmethod
+    def fix_null_ids(cls):
+        """Fix checkins with null IDs"""
+        checkins = cls.load_all()
+        fixed = False
+        
+        for checkin in checkins:
+            if checkin.id is None:
+                checkin.id = cls.get_next_id()
+                fixed = True
+        
+        if fixed:
+            cls.save_all(checkins)

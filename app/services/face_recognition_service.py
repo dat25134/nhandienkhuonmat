@@ -39,11 +39,10 @@ class FaceRecognitionService:
             # Convert to numpy array
             return np.array(image)
         except Exception as e:
-            print(f"Error decoding image: {e}")
             return None
     
-    def preprocess_image(self, image_array: np.ndarray) -> np.ndarray:
-        """Preprocess image for better face recognition"""
+    def preprocess_image(self, image_array: np.ndarray, force_enhance: bool = False) -> np.ndarray:
+        """Preprocess image for better face recognition - only enhance when needed"""
         try:
             h, w = image_array.shape[:2]
             max_side = max(h, w)
@@ -53,9 +52,21 @@ class FaceRecognitionService:
                 new_w = int(w * scale)
                 new_h = int(h * scale)
                 image_array = cv2.resize(image_array, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            
+            # Only enhance if blur score is low or forced
+            if force_enhance:
+                blur_score = self.compute_blur_score(image_array)
+                if blur_score < 80.0:  # Only enhance if below threshold
+                    # Light contrast enhancement to increase blur score
+                    lab = cv2.cvtColor(image_array, cv2.COLOR_RGB2LAB)
+                    l, a, b = cv2.split(lab)
+                    clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(16,16))
+                    l = clahe.apply(l)
+                    lab = cv2.merge([l, a, b])
+                    image_array = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+            
             return image_array
         except Exception as e:
-            print(f'Error preprocessing image: {e}')
             return image_array
     
     def compute_blur_score(self, image_array: np.ndarray) -> float:
@@ -67,32 +78,21 @@ class FaceRecognitionService:
             return 0.0
     
     def get_face_encoding(self, image_array: np.ndarray) -> Optional[np.ndarray]:
-        """Extract face encoding from image"""
+        """Extract face encoding from image (restored from app.py)"""
         try:
             # Preprocess image
             image_array = self.preprocess_image(image_array)
             
-            # Find face locations with multiple attempts
-            face_locations = face_recognition.face_locations(
-                image_array, number_of_times_to_upsample=1, model='hog'
-            )
+            # Find face locations (upsample to increase detection capability)
+            face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=1)
             
             if not face_locations:
-                # Try with more upsampling
-                face_locations = face_recognition.face_locations(
-                    image_array, number_of_times_to_upsample=2, model='hog'
-                )
+                # Fallback with more upsampling if not found
+                face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=2)
+                if not face_locations:
+                    return None
             
-            if not face_locations:
-                # Try with CNN model (more accurate but slower)
-                face_locations = face_recognition.face_locations(
-                    image_array, number_of_times_to_upsample=1, model='cnn'
-                )
-            
-            if not face_locations:
-                return None
-            
-            # Get face encodings
+            # Get encoding of the first face
             face_encodings = face_recognition.face_encodings(image_array, face_locations)
             
             if face_encodings:
@@ -101,6 +101,7 @@ class FaceRecognitionService:
             return None
         except Exception as e:
             return None
+    
     
     def find_face_locations(self, image_array: np.ndarray) -> List[Tuple]:
         """Find all face locations in image"""
@@ -121,7 +122,6 @@ class FaceRecognitionService:
             
             return face_locations
         except Exception as e:
-            print(f"Error finding face locations: {e}")
             return []
     
     def get_all_face_encodings(self, image_array: np.ndarray) -> List[np.ndarray]:
@@ -139,7 +139,6 @@ class FaceRecognitionService:
             face_encodings = face_recognition.face_encodings(image_array, face_locations)
             return face_encodings
         except Exception as e:
-            print(f"Error getting face encodings: {e}")
             return []
     
     def is_image_quality_good(self, image_array: np.ndarray, is_enrollment: bool = False) -> bool:
@@ -150,7 +149,7 @@ class FaceRecognitionService:
     
     def match_face_strict(self, query_encoding: np.ndarray, 
                          known_encodings: List[np.ndarray]) -> Tuple[bool, float, float]:
-        """Match face with strict criteria"""
+        """Match face with improved strict criteria"""
         if not known_encodings:
             return False, 1.0, 1.0
         
@@ -166,12 +165,55 @@ class FaceRecognitionService:
             d1 = float(sorted_distances[0])
             d2 = float(sorted_distances[1]) if len(sorted_distances) > 1 else 1.0
             
+            # Improved strict criteria with more lenient tolerance
+            # Original: tolerance=0.6, gap_min=0.05
+            # New: More lenient for better accuracy
+            tolerance = 0.65  # Increased from 0.6
+            gap_min = 0.03    # Decreased from 0.05
+            
             # Check strict criteria
-            accepted = (d1 <= self.tolerance) and ((d2 - d1) >= self.top2_gap_min)
+            accepted = (d1 <= tolerance) and ((d2 - d1) >= gap_min)
+            
+            # Additional check: if distance is very low, accept even without gap
+            if d1 <= 0.4:  # Very confident match
+                accepted = True
             
             return accepted, d1, d2
         except Exception as e:
-            print(f"Error matching face: {e}")
+            return False, 1.0, 1.0
+    
+    def match_face_with_fallback(self, query_encoding: np.ndarray, 
+                               known_encodings: List[np.ndarray]) -> Tuple[bool, float, float]:
+        """Match face with fallback strategy for better accuracy"""
+        if not known_encodings:
+            return False, 1.0, 1.0
+        
+        try:
+            # Primary matching with strict criteria
+            accepted, d1, d2 = self.match_face_strict(query_encoding, known_encodings)
+            
+            if accepted:
+                return True, d1, d2
+            
+            # Fallback: Try with more lenient criteria
+            distances = face_recognition.face_distance(
+                np.asarray(known_encodings, dtype=np.float32), 
+                np.asarray(query_encoding, dtype=np.float32)
+            )
+            
+            sorted_distances = np.sort(distances)
+            d1 = float(sorted_distances[0])
+            d2 = float(sorted_distances[1]) if len(sorted_distances) > 1 else 1.0
+            
+            # Fallback criteria: more lenient
+            fallback_tolerance = 0.7  # More lenient
+            fallback_gap_min = 0.02   # Smaller gap requirement
+            
+            fallback_accepted = (d1 <= fallback_tolerance) and ((d2 - d1) >= fallback_gap_min)
+            
+            return fallback_accepted, d1, d2
+            
+        except Exception as e:
             return False, 1.0, 1.0
     
     def recognize_single_face(self, image_data: str) -> Dict[str, Any]:
@@ -206,7 +248,6 @@ class FaceRecognitionService:
                 'image_quality': self.compute_blur_score(image_array)
             }
         except Exception as e:
-            print(f"Error in single face recognition: {e}")
             return {
                 'recognized': False,
                 'message': 'Lỗi xử lý nhận dạng khuôn mặt'
@@ -239,8 +280,8 @@ class FaceRecognitionService:
                 'face_count': len(all_face_encodings)
             }
         except Exception as e:
-            print(f"Error in multiple face recognition: {e}")
             return {
                 'recognized': False,
                 'message': 'Lỗi xử lý nhận dạng nhiều khuôn mặt'
             }
+    

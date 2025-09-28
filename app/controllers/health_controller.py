@@ -33,5 +33,4 @@ def serve_media(relpath):
         
         abort(404)
     except Exception as e:
-        print(f"Error serving media: {e}")
         abort(404)

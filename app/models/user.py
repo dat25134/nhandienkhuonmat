@@ -138,6 +138,11 @@ class User:
         return None
     
     @classmethod
+    def get_all(cls) -> List['User']:
+        """Get all users (alias for load_all)"""
+        return cls.load_all()
+    
+    @classmethod
     def get_next_id(cls) -> int:
         """Get next available user ID"""
         users = cls.load_all()

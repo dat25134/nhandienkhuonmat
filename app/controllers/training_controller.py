@@ -11,6 +11,9 @@ from app.models.user import User
 from datetime import datetime
 import os
 import base64
+import io
+import numpy as np
+from PIL import Image
 
 training_bp = Blueprint('training', __name__)
 
@@ -29,19 +32,23 @@ def training():
         delegate_info = data.get('delegateInfo', {})
         training_images = data.get('trainingImages', [])
         
-        # Debug logging
-        print(f"Received data keys: {list(data.keys())}")
-        print(f"Delegate info keys: {list(delegate_info.keys())}")
-        print(f"Training images count: {len(training_images)}")
-        if training_images:
-            print(f"First training image keys: {list(training_images[0].keys())}")
         
         # Validate required fields
         if not delegate_info.get('name'):
-            return jsonify({'error': 'Tên không được để trống'}), 400
+            return jsonify({
+                'success': False,
+                'error': {
+                    'message': 'Tên không được để trống'
+                }
+            }), 400
         
         if not training_images or len(training_images) == 0:
-            return jsonify({'error': 'Cần cung cấp ít nhất 1 ảnh training'}), 400
+            return jsonify({
+                'success': False,
+                'error': {
+                    'message': 'Cần cung cấp ít nhất 1 ảnh training'
+                }
+            }), 400
         
         # Extract user information
         name = sanitize_text(delegate_info.get('name', ''))
@@ -52,8 +59,22 @@ def training():
         notes = sanitize_text(delegate_info.get('notes', ''))
         avatar = delegate_info.get('avatar', '')
         
-        # Get next user ID before processing images
-        user_id = User.get_next_id()
+        # Check for existing user with same name, phone, and email FIRST
+        existing_user = None
+        all_users = User.get_all()
+        for u in all_users:
+            if (u.name == name and 
+                u.phone == phone and 
+                u.email == email and 
+                email):  # Only check if email is provided
+                existing_user = u
+                break
+        
+        # Determine user_id - use existing or generate new
+        if existing_user:
+            user_id = existing_user.id
+        else:
+            user_id = User.get_next_id()
         
         # Process training images
         saved_images = []
@@ -76,58 +97,73 @@ def training():
                 
                 image_bytes = base64.b64decode(image_base64)
                 
-                # Save image file
-                user_dir = os.path.join('data', 'images', str(user_id))
-                os.makedirs(user_dir, exist_ok=True)
-                
-                timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
-                angle = img_data.get('angle', f'img_{i}')
-                filename = f'{timestamp}_{angle}.jpg'
-                image_path = os.path.join(user_dir, filename)
-                
-                with open(image_path, 'wb') as f:
-                    f.write(image_bytes)
-                
-                saved_images.append(image_path)
-                
-                # Extract face encoding for validation
+                # Check image quality BEFORE saving
                 img = Image.open(io.BytesIO(image_bytes))
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
                 img_array = np.array(img)
                 
-                # Check image quality and extract face encoding
-                quality_good = face_service.is_image_quality_good(img_array, is_enrollment=True)
+                # Check image quality and enhance if needed
+                original_blur = face_service.compute_blur_score(img_array)
+                if original_blur < face_service.blur_min_enroll:
+                    # Try to enhance the image
+                    enhanced_img = face_service.preprocess_image(img_array, force_enhance=True)
+                    enhanced_blur = face_service.compute_blur_score(enhanced_img)
+                    if enhanced_blur < face_service.blur_min_enroll:
+                        error_msg = f"Image {i+1}: Chất lượng ảnh không đạt yêu cầu (blur: {original_blur:.1f} -> {enhanced_blur:.1f}), hãy chụp lại"
+                        processing_errors.append(error_msg)
+                        continue
+                    # Use enhanced image for further processing
+                    img_array = enhanced_img
+                
+                if not face_service.is_image_quality_good(img_array, is_enrollment=True):
+                    error_msg = f"Image {i+1}: Không phát hiện khuôn mặt hợp lệ trong ảnh"
+                    processing_errors.append(error_msg)
+                    continue
+                
+                # Extract face encoding for validation
                 face_encoding = face_service.get_face_encoding(img_array)
                 
                 if face_encoding is not None:
-                    if quality_good:
-                        valid_encodings.append(face_encoding)
-                    else:
-                        # Still add to valid_encodings but with warning
-                        valid_encodings.append(face_encoding)
+                    # Save image file only if quality is good and face detected
+                    user_dir = os.path.join('data', 'images', str(user_id))
+                    os.makedirs(user_dir, exist_ok=True)
+                    
+                    timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+                    angle = img_data.get('angle', f'img_{i}')
+                    filename = f'{timestamp}_{angle}.jpg'
+                    image_path = os.path.join(user_dir, filename)
+                    
+                    with open(image_path, 'wb') as f:
+                        f.write(image_bytes)
+                    
+                    saved_images.append(image_path)
+                    valid_encodings.append(face_encoding)
                 
             except Exception as e:
                 error_msg = f"Image {i+1}: Error processing - {str(e)}"
                 processing_errors.append(error_msg)
                 continue
         
-        print(f"Processing complete: {len(saved_images)} images saved, {len(valid_encodings)} valid encodings")
         
         if not saved_images:
             return jsonify({
-                'error': 'Không thể xử lý ảnh hợp lệ',
-                'details': processing_errors,
-                'total_images': len(training_images)
+                'success': False,
+                'error': {
+                    'message': 'Không có ảnh nào đạt chất lượng yêu cầu, Hãy chụp lại ảnh với chất lượng tốt hơn (rõ nét, ánh sáng tốt)',
+                    'details': processing_errors,
+                    'suggestion': 'Hãy chụp lại ảnh với chất lượng tốt hơn (rõ nét, ánh sáng tốt)'
+                }
             }), 400
         
         if len(valid_encodings) == 0:
             return jsonify({
-                'error': 'Không phát hiện khuôn mặt hợp lệ trong ảnh',
-                'details': processing_errors,
-                'total_images': len(training_images),
-                'saved_images': len(saved_images),
-                'suggestion': 'Vui lòng chụp ảnh rõ nét, có khuôn mặt rõ ràng và ánh sáng tốt'
+                'success': False,
+                'error': {
+                    'message': 'Không phát hiện khuôn mặt hợp lệ trong ảnh',
+                    'details': processing_errors,
+                    'suggestion': 'Vui lòng chụp ảnh rõ nét, có khuôn mặt rõ ràng và ánh sáng tốt'
+                }
             }), 400
         
         # Process avatar if provided
@@ -157,24 +193,48 @@ def training():
             except Exception as e:
                 processing_errors.append(f"Avatar processing error: {str(e)}")
         
-        # Create user
-        user_data = {
-            'id': user_id,  # Use the pre-generated user_id
-            'name': name,
-            'phone': phone,
-            'gender': delegate_info.get('gender', ''),
-            'company': organization,
-            'department': delegate_info.get('department', ''),
-            'position': position,
-            'seat_number': delegate_info.get('seat_number', ''),
-            'email': email or '',
-            'avatar': avatar_path,  # Store file path instead of base64
-            'notes': delegate_info.get('notes', ''),
-            'images': saved_images
-        }
-        
-        # Create user in database
-        user = user_service.create_user(user_data)
+        if existing_user:
+            # Update existing user with new images and avatar
+            
+            # Add new images to existing user
+            existing_user.images.extend(saved_images)
+            
+            # Update avatar if provided
+            if avatar_path:
+                existing_user.avatar = avatar_path
+            
+            # Update other fields if they're different
+            if organization and organization != existing_user.company:
+                existing_user.company = organization
+            if position and position != existing_user.position:
+                existing_user.position = position
+            if delegate_info.get('department') and delegate_info.get('department') != existing_user.department:
+                existing_user.department = delegate_info.get('department', '')
+            if delegate_info.get('notes') and delegate_info.get('notes') != existing_user.notes:
+                existing_user.notes = delegate_info.get('notes', '')
+            
+            # Save updated user
+            existing_user.save()
+            user = existing_user
+        else:
+            # Create new user
+            user_data = {
+                'id': user_id,  # Use the determined user_id
+                'name': name,
+                'phone': phone,
+                'gender': delegate_info.get('gender', ''),
+                'company': organization,
+                'department': delegate_info.get('department', ''),
+                'position': position,
+                'seat_number': delegate_info.get('seat_number', ''),
+                'email': email or '',
+                'avatar': avatar_path,  # Store file path instead of base64
+                'notes': delegate_info.get('notes', ''),
+                'images': saved_images
+            }
+            
+            # Create user in database
+            user = user_service.create_user(user_data)
         
         # Rebuild cache to include new user
         cache_service.build_cache()
@@ -207,8 +267,12 @@ def training():
         })
         
     except Exception as e:
-        print(f"Error in training: {e}")
-        return jsonify({'error': 'Lỗi xử lý đăng ký'}), 500
+        return jsonify({
+            'success': False,
+            'error': {
+                'message': 'Lỗi xử lý đăng ký'
+            }
+        }), 500
 
 @training_bp.route('/api/training/validate', methods=['POST'])
 def validate_training_images():
@@ -218,7 +282,12 @@ def validate_training_images():
         training_images = data.get('trainingImages', [])
         
         if not training_images:
-            return jsonify({'error': 'Không có ảnh để validate'}), 400
+            return jsonify({
+                'success': False,
+                'error': {
+                    'message': 'Không có ảnh để validate'
+                }
+            }), 400
         
         results = []
         valid_count = 0
@@ -241,10 +310,6 @@ def validate_training_images():
                     image_base64 = image_base64.split(',')[1]
                 
                 image_bytes = base64.b64decode(image_base64)
-                
-                from PIL import Image
-                import io
-                import numpy as np
                 
                 img = Image.open(io.BytesIO(image_bytes))
                 if img.mode != 'RGB':
@@ -284,5 +349,9 @@ def validate_training_images():
         })
         
     except Exception as e:
-        print(f"Error validating training images: {e}")
-        return jsonify({'error': 'Lỗi validate ảnh'}), 500
+        return jsonify({
+            'success': False,
+            'error': {
+                'message': 'Lỗi validate ảnh'
+            }
+        }), 500

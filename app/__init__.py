@@ -29,6 +29,5 @@ def create_app(config_class=Config):
         from app.services.cache_service import CacheService
         cache_service = CacheService()
         cache_service.build_cache()
-        print("✅ Face encoding cache built on startup")
     
     return app

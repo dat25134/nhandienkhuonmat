@@ -23,10 +23,10 @@ class Config:
     DB_DIR = DATA_DIR / 'db'
     IMAGES_DIR = DATA_DIR / 'images'
     
-    # Face recognition settings
-    FACE_RECOGNITION_TOLERANCE = float(os.environ.get('FACE_RECOGNITION_TOLERANCE', '0.6'))
-    FACE_RECOGNITION_TOP2_GAP_MIN = float(os.environ.get('FACE_RECOGNITION_TOP2_GAP_MIN', '0.05'))
-    BLUR_MIN_ENROLL = float(os.environ.get('BLUR_MIN_ENROLL', '10.0'))
+    # Face recognition settings (restored from app.py for better accuracy)
+    FACE_RECOGNITION_TOLERANCE = float(os.environ.get('FACE_RECOGNITION_TOLERANCE', '0.53'))
+    FACE_RECOGNITION_TOP2_GAP_MIN = float(os.environ.get('FACE_RECOGNITION_TOP2_GAP_MIN', '0.07'))
+    BLUR_MIN_ENROLL = float(os.environ.get('BLUR_MIN_ENROLL', '80.0'))
     BLUR_MIN_QUERY = float(os.environ.get('BLUR_MIN_QUERY', '60.0'))
     
     # Cache settings

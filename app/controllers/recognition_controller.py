@@ -49,6 +49,38 @@ def recognize_face_multi():
                     user = User.get_by_id(uid)
                     
                     if user:
+                        # Auto-create checkin when face is recognized
+                        from app.models.checkin import Checkin
+                        from datetime import datetime
+                        
+                        # Check if already checked in today
+                        existing_checkin = Checkin.get_today_checkin(uid)
+                        
+                        if not existing_checkin:
+                            # Calculate confidence from distance
+                            confidence = max(0, 1 - d1) if d1 is not None else None
+                            
+                            # Create new checkin with synchronized user data
+                            checkin = Checkin(
+                                user_id=uid,
+                                name=user.name,
+                                phone=user.phone,
+                                gender=user.gender,
+                                company=user.company,
+                                department=user.department,
+                                position=user.position,
+                                seat_number=user.seat_number,
+                                email=user.email,
+                                avatar=user.avatar,
+                                notes=user.notes,
+                                method='face_recognition',
+                                confidence=confidence,
+                                distance=d1
+                            )
+                            
+                            # Save checkin (this will auto-assign ID)
+                            checkin.save()
+                        
                         # Convert file paths to URLs
                         user_images = []
                         if user.images:
@@ -61,12 +93,16 @@ def recognize_face_multi():
                         if user.avatar:
                             user_avatar = f'/api/media/avatar/{user.id}/{os.path.basename(user.avatar)}'
                         
+                        # Calculate confidence from distance
+                        confidence = max(0, 1 - d1) if d1 is not None else None
+                        
                         all_recognized.append({
                             'user_id': user.id,
                             'name': uname,
                             'gender': ugender,
                             'message': f'Chào mừng {uname} đã đến với hệ thống của chúng tôi',
                             'distance': d1,
+                            'confidence': confidence,
                             'images': user_images,
                             'phone': user.phone,
                             'company': user.company,
@@ -76,7 +112,9 @@ def recognize_face_multi():
                             'email': user.email,
                             'avatar': user_avatar,
                             'notes': user.notes,
-                            'created_at': user.created_at
+                            'created_at': user.created_at,
+                            'checked_in': True,
+                            'checkin_time': existing_checkin.checked_at if existing_checkin else None
                         })
 
         if all_recognized:
@@ -100,7 +138,6 @@ def recognize_face_multi():
         })
 
     except Exception as e:
-        print(f"Error in face recognition (multi): {e}")
         return jsonify({
             'recognized': False,
             'message': 'Lỗi xử lý nhận dạng (multi)'
@@ -118,8 +155,12 @@ def rebuild_cache():
             'encodings': status['total_encodings']
         })
     except Exception as e:
-        print(f"Error rebuilding cache: {e}")
-        return jsonify({'error': 'Lỗi rebuild cache'}), 500
+        return jsonify({
+            'success': False,
+            'error': {
+                'message': 'Lỗi rebuild cache'
+            }
+        }), 500
 
 @recognition_bp.route('/api/cache/status', methods=['GET'])
 def cache_status():
@@ -128,5 +169,9 @@ def cache_status():
         status = cache_service.get_cache_status()
         return jsonify(status)
     except Exception as e:
-        print(f"Error getting cache status: {e}")
-        return jsonify({'error': 'Lỗi lấy trạng thái cache'}), 500
+        return jsonify({
+            'success': False,
+            'error': {
+                'message': 'Lỗi lấy trạng thái cache'
+            }
+        }), 500
