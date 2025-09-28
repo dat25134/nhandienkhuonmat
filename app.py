@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file
 import os
 import json
 import threading
@@ -9,12 +9,9 @@ import face_recognition
 from datetime import datetime
 from PIL import Image
 import io
-from gtts import gTTS
-import tempfile
 from werkzeug.utils import secure_filename
 from pathlib import Path
 from flask import send_from_directory, abort
-from openpyxl import load_workbook
 
 app = Flask(__name__)
 
@@ -32,9 +29,6 @@ def _ensure_init_once():
         _APP_INIT_DONE = True
 
 # Đảm bảo các thư mục cần thiết tồn tại
-os.makedirs('static/css', exist_ok=True)
-os.makedirs('static/js', exist_ok=True)
-os.makedirs('templates', exist_ok=True)
 os.makedirs('models', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 os.makedirs('data/images', exist_ok=True)
@@ -179,28 +173,6 @@ def init_db():
     _ensure_users_json()
     build_encoding_cache()
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/training')
-def training():
-    return render_template('training.html')
-@app.route('/checkins')
-def checkins_page():
-    return render_template('checkins.html')
-
-@app.route('/manage')
-def manage_page():
-    return render_template('manage.html')
-
-@app.route('/welcome')
-def welcome_page():
-    return render_template('welcome.html')
-
-@app.route('/camera-test')
-def camera_test_page():
-    return render_template('camera_test.html')
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
@@ -724,94 +696,7 @@ def add_user_upload():
 
 ## Removed legacy endpoint /api/recognize/upload (unused)
 
-@app.route('/api/recognize', methods=['POST'])
-def recognize_face():
-    data = request.json
-    image_data = data.get('face_encoding')
-    
-    if not image_data:
-        return jsonify({
-            'recognized': False,
-            'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
-        }), 400
-    
-    try:
-        # Decode ảnh
-        image_array = decode_image(image_data)
-        if image_array is None:
-            return jsonify({
-                'recognized': False,
-                'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
-            }), 400
-        
-        # Trích xuất face encoding
-        current_face_encoding = get_face_encoding(image_array)
-        if current_face_encoding is None:
-            return jsonify({
-                'recognized': False,
-                'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
-            }), 400
-        
-        # Lọc chất lượng query
-        if compute_blur_score(image_array) < BLUR_MIN_QUERY:
-            return jsonify({'recognized': False, 'message': 'Ảnh quá mờ, vui lòng chụp lại với ánh sáng tốt hơn'}), 400
 
-        # So khớp nghiêm ngặt theo centroid + gap
-        accepted, uid, uname, ugender, d1, d2 = match_centroid_strict(current_face_encoding)
-        if accepted:
-            return jsonify({
-                'recognized': True,
-                'user_id': uid,
-                'name': uname,
-                'message': build_greeting(uname, ugender),
-                'distance': d1
-            })
-        
-        return jsonify({
-            'recognized': False,
-            'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
-        })
-        
-    except Exception as e:
-        print(f"Lỗi nhận dạng khuôn mặt: {e}")
-        return jsonify({
-            'recognized': False,
-            'message': 'Hiện tại hệ thống chưa có thông tin về bạn, hãy liên hệ với người có thẩm quyền hoặc tự thêm thông tin vào hệ thống'
-        }), 500
-
-@app.route('/api/detect-face', methods=['POST'])
-def detect_face():
-    """API để kiểm tra có khuôn mặt trong ảnh hay không"""
-    data = request.json
-    image_data = data.get('image')
-    
-    if not image_data:
-        return jsonify({'has_face': False, 'message': 'Không có dữ liệu ảnh'}), 400
-    
-    try:
-        # Decode ảnh
-        image_array = decode_image(image_data)
-        if image_array is None:
-            return jsonify({'has_face': False, 'message': 'Lỗi decode ảnh'}), 400
-        
-        # Kiểm tra có khuôn mặt không
-        face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=1)
-        
-        if not face_locations:
-            # Thử upsample thêm một lần nữa
-            face_locations = face_recognition.face_locations(image_array, number_of_times_to_upsample=2)
-        
-        has_face = len(face_locations) > 0
-        
-        return jsonify({
-            'has_face': has_face,
-            'face_count': len(face_locations),
-            'message': f'Phát hiện {len(face_locations)} khuôn mặt' if has_face else 'Không phát hiện khuôn mặt'
-        })
-        
-    except Exception as e:
-        print(f"Lỗi detect face: {e}")
-        return jsonify({'has_face': False, 'message': 'Lỗi xử lý phát hiện khuôn mặt'}), 500
 
 @app.route('/api/recognize/multi', methods=['POST'])
 def recognize_face_multi():
@@ -892,28 +777,6 @@ def recognize_face_multi():
             'message': 'Lỗi xử lý nhận dạng (multi)'
         }), 500
 
-@app.route('/api/tts', methods=['POST'])
-def text_to_speech():
-    data = request.json
-    text = data.get('text', '')
-    
-    if not text:
-        return jsonify({'error': 'Không có text để chuyển đổi'}), 400
-    
-    try:
-        # Tạo TTS với gTTS
-        tts = gTTS(text=text, lang='vi', slow=False)
-        
-        # Lưu file tạm thời
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
-        tts.save(temp_file.name)
-        
-        # Trả về file audio
-        return send_file(temp_file.name, mimetype='audio/mpeg')
-        
-    except Exception as e:
-        print(f"Lỗi TTS: {e}")
-        return jsonify({'error': 'Lỗi chuyển đổi text thành speech'}), 500
 
 @app.route('/api/users/<int:user_id>/profile', methods=['PUT'])
 def update_profile(user_id):
@@ -1109,151 +972,6 @@ def clear_checkins():
         save_checkins_json({"checkins": []})
     return jsonify({"status": "ok", "cleared": True})
 
-@app.route('/api/excel/template', methods=['GET'])
-def download_excel_template():
-    """Download template Excel cho import khách"""
-    try:
-        template_path = 'static/templates/template_khach_moi.xlsx'
-        if not os.path.exists(template_path):
-            # Tạo template nếu chưa có
-            from create_template import create_excel_template
-            create_excel_template()
-        
-        return send_from_directory(
-            directory=os.path.dirname(template_path),
-            path=os.path.basename(template_path),
-            as_attachment=True,
-            download_name='template_khach_moi.xlsx'
-        )
-    except Exception as e:
-        return jsonify({'error': f'Lỗi tạo template: {str(e)}'}), 500
-
-@app.route('/api/excel/import', methods=['POST'])
-def import_excel():
-    """Import khách từ file Excel"""
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'Không có file được upload'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'Không có file được chọn'}), 400
-        
-        if not file.filename.lower().endswith(('.xlsx', '.xls')):
-            return jsonify({'error': 'File phải có định dạng Excel (.xlsx hoặc .xls)'}), 400
-        
-        # Đọc file Excel
-        wb = load_workbook(file)
-        ws = wb.active
-        
-        # Lấy headers (dòng 1)
-        headers = []
-        for col in range(1, ws.max_column + 1):
-            headers.append(ws.cell(row=1, column=col).value)
-        
-        # Kiểm tra headers bắt buộc
-        required_headers = ['Họ và tên', 'Số điện thoại', 'Số ghế']
-        header_mapping = {}
-        for i, header in enumerate(headers):
-            if header in required_headers:
-                header_mapping[header] = i + 1
-        
-        if len(header_mapping) < len(required_headers):
-            missing = [h for h in required_headers if h not in header_mapping]
-            return jsonify({'error': f'Thiếu cột bắt buộc: {", ".join(missing)}'}), 400
-        
-        # Mapping các cột
-        col_mapping = {
-            'name': header_mapping.get('Họ và tên', 0),
-            'phone': header_mapping.get('Số điện thoại', 0),
-            'seat_number': header_mapping.get('Số ghế', 0),
-            'gender': next((i+1 for i, h in enumerate(headers) if h == 'Giới tính'), 0),
-            'company': next((i+1 for i, h in enumerate(headers) if h == 'Công ty'), 0),
-            'department': next((i+1 for i, h in enumerate(headers) if h == 'Bộ phận'), 0),
-            'position': next((i+1 for i, h in enumerate(headers) if h == 'Vị trí'), 0),
-        }
-        
-        added_count = 0
-        skipped_count = 0
-        errors = []
-        
-        # Xử lý từng dòng dữ liệu (bỏ qua dòng header)
-        for row in range(2, ws.max_row + 1):
-            try:
-                # Lấy dữ liệu từ Excel
-                name = ws.cell(row=row, column=col_mapping['name']).value
-                phone = ws.cell(row=row, column=col_mapping['phone']).value
-                seat_number = ws.cell(row=row, column=col_mapping['seat_number']).value
-                
-                # Kiểm tra dữ liệu bắt buộc
-                if not name or not phone or not seat_number:
-                    skipped_count += 1
-                    errors.append(f"Dòng {row}: Thiếu tên, số điện thoại hoặc số ghế")
-                    continue
-                
-                # Chuẩn hóa dữ liệu
-                name = str(name).strip()
-                phone = normalize_phone(str(phone).strip())
-                seat_number = str(seat_number).strip()
-                gender = str(ws.cell(row=row, column=col_mapping['gender']).value or '').strip()
-                company = str(ws.cell(row=row, column=col_mapping['company']).value or '').strip()
-                department = str(ws.cell(row=row, column=col_mapping['department']).value or '').strip()
-                position = str(ws.cell(row=row, column=col_mapping['position']).value or '').strip()
-                
-                # Chuẩn hóa số ghế
-                seat_number = sanitize_text(seat_number)
-                
-                # Kiểm tra trùng lặp số điện thoại và số ghế
-                existing_users = load_users_json().get('users', [])
-                if any(u.get('phone') == phone for u in existing_users):
-                    skipped_count += 1
-                    errors.append(f"Dòng {row}: Số điện thoại {phone} đã tồn tại")
-                    continue
-                
-                if any(u.get('seat_number') == seat_number for u in existing_users):
-                    skipped_count += 1
-                    errors.append(f"Dòng {row}: Số ghế {seat_number} đã được sử dụng")
-                    continue
-                
-                # Tạo user mới
-                new_user = {
-                    'id': max([u.get('id', 0) for u in existing_users], default=0) + 1,
-                    'name': name,
-                    'phone': phone,
-                    'gender': gender,
-                    'company': company,
-                    'department': department,
-                    'position': position,
-                    'seat_number': seat_number,
-                    'images': []  # Ảnh sẽ được thêm sau
-                }
-                
-                # Lưu user vào database
-                with _users_lock:
-                    data = load_users_json()
-                    data['users'].append(new_user)
-                    save_users_json(data)
-                
-                added_count += 1
-                
-            except Exception as e:
-                skipped_count += 1
-                errors.append(f"Dòng {row}: Lỗi xử lý - {str(e)}")
-                continue
-        
-        result = {
-            'added': added_count,
-            'skipped': skipped_count,
-            'total_processed': added_count + skipped_count
-        }
-        
-        if errors:
-            result['errors'] = errors[:10]  # Chỉ trả về 10 lỗi đầu tiên
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        return jsonify({'error': f'Lỗi xử lý file Excel: {str(e)}'}), 500
 
 @app.route('/api/users/search', methods=['GET'])
 def search_users():
@@ -1381,16 +1099,6 @@ def check_checkin_status(user_id):
 
 if __name__ == '__main__':
     init_db()
-    
-    # Kiểm tra xem có SSL certificate không
-    import os
-    if os.path.exists('cert.pem') and os.path.exists('key.pem'):
-        print("Chạy với HTTPS...")
-        print("Truy cập LAN: https://<IP_LAN>:5000")
-        app.run(debug=True, host='0.0.0.0', port=5000, ssl_context=('cert.pem', 'key.pem'))
-    else:
-        print("Chạy với HTTP (không có SSL certificate)...")
-        print("Truy cập LAN: http://<IP_LAN>:5000")
-        print("Để chạy HTTPS, hãy tạo SSL certificate bằng lệnh:")
-        print("openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365")
-        app.run(debug=True, host='0.0.0.0', port=5000)
+    print("Chạy Backend API server...")
+    print("Truy cập API: http://<IP_LAN>:5000")
+    app.run(debug=True, host='0.0.0.0', port=5000)
