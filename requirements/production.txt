@@ -1,0 +1,9 @@
+# Production dependencies
+-r base.txt
+
+# Production server
+gunicorn==21.2.0
+gevent==23.9.1
+
+# Monitoring and logging
+python-dotenv==1.0.0

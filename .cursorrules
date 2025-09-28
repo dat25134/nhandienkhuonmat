@@ -6,6 +6,25 @@
 3. **Không chạy lệnh nền trên terminal** - Chỉ tư vấn cách chạy, người dùng sẽ tự thực hiện và gửi kết quả để đưa ra hướng giải quyết khi có lỗi
 4. **Không tạo file hướng dẫn** - Chỉ tạo khi hoàn thành dự án hoặc được yêu cầu cụ thể
 5. **Không tạo file git** - Người dùng sẽ tự quản lý git
+6. **Không tạo thư mục scripts/** - Dự án đơn giản không cần automation scripts phức tạp
+7. **Giữ dự án sạch sẽ** - Chỉ tạo file thực sự cần thiết, tránh over-engineering
+
+## Cấu trúc dự án tối ưu
+- **app/**: Main application package với models, services, controllers
+- **data/**: Data storage (db/, images/)
+- **tests/**: Test files
+- **requirements/**: Dependencies by environment
+- **config/**: Configuration files
+- **docs/**: Documentation
+- **run.py**: Application entry point
+- **wsgi.py**: WSGI entry point for production
+
+## Nguyên tắc phát triển
+- **KISS (Keep It Simple, Stupid)**: Giữ mọi thứ đơn giản
+- **YAGNI (You Aren't Gonna Need It)**: Không tạo những gì chưa cần
+- **Separation of Concerns**: Tách biệt models, services, controllers
+- **Configuration Management**: Sử dụng environment variables
+- **Clean Code**: Code dễ đọc, dễ maintain
 
 ## Cách áp dụng
 - Tuân thủ nghiêm ngặt các quy định trên
