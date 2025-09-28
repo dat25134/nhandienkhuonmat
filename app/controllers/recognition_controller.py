@@ -2,6 +2,7 @@
 Recognition Controller
 Handles face recognition API endpoints
 """
+import os
 from flask import Blueprint, request, jsonify
 from app.services.face_recognition_service import FaceRecognitionService
 from app.services.cache_service import CacheService
@@ -48,13 +49,34 @@ def recognize_face_multi():
                     user = User.get_by_id(uid)
                     
                     if user:
+                        # Convert file paths to URLs
+                        user_images = []
+                        if user.images:
+                            user_images = [
+                                f'/api/media/images/{user.id}/{os.path.basename(img_path)}' 
+                                for img_path in user.images
+                            ]
+                        
+                        user_avatar = ''
+                        if user.avatar:
+                            user_avatar = f'/api/media/avatar/{user.id}/{os.path.basename(user.avatar)}'
+                        
                         all_recognized.append({
                             'user_id': user.id,
                             'name': uname,
                             'gender': ugender,
                             'message': f'Chào mừng {uname} đã đến với hệ thống của chúng tôi',
                             'distance': d1,
-                            'images': user.images
+                            'images': user_images,
+                            'phone': user.phone,
+                            'company': user.company,
+                            'department': user.department,
+                            'position': user.position,
+                            'seat_number': user.seat_number,
+                            'email': user.email,
+                            'avatar': user_avatar,
+                            'notes': user.notes,
+                            'created_at': user.created_at
                         })
 
         if all_recognized:

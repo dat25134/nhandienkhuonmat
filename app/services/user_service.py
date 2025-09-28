@@ -23,6 +23,7 @@ class UserService:
     def create_user(self, user_data: Dict[str, Any]) -> User:
         """Create new user"""
         user = User(
+            user_id=user_data.get('id'),  # Use provided ID if available
             name=user_data.get('name', ''),
             phone=user_data.get('phone', ''),
             gender=user_data.get('gender', ''),
@@ -30,7 +31,10 @@ class UserService:
             department=user_data.get('department', ''),
             position=user_data.get('position', ''),
             seat_number=user_data.get('seat_number', ''),
-            images=user_data.get('images', [])
+            images=user_data.get('images', []),
+            email=user_data.get('email', ''),
+            avatar=user_data.get('avatar', ''),
+            notes=user_data.get('notes', '')
         )
         user.save()
         return user

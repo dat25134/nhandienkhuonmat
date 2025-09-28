@@ -11,8 +11,14 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
     
-    # Initialize extensions
-    CORS(app)
+    # Initialize CORS with specific origins
+    CORS(app, origins=[
+        'http://localhost:3000',  # React development server
+        'http://127.0.0.1:3000',
+        'http://localhost:3001',
+        'http://127.0.0.1:3001',
+        # Add production URLs here when needed
+    ])
     
     # Register blueprints
     from app.controllers import register_blueprints

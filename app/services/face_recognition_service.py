@@ -72,18 +72,25 @@ class FaceRecognitionService:
             # Preprocess image
             image_array = self.preprocess_image(image_array)
             
-            # Find face locations
+            # Find face locations with multiple attempts
             face_locations = face_recognition.face_locations(
-                image_array, number_of_times_to_upsample=1
+                image_array, number_of_times_to_upsample=1, model='hog'
             )
             
             if not face_locations:
                 # Try with more upsampling
                 face_locations = face_recognition.face_locations(
-                    image_array, number_of_times_to_upsample=2
+                    image_array, number_of_times_to_upsample=2, model='hog'
                 )
-                if not face_locations:
-                    return None
+            
+            if not face_locations:
+                # Try with CNN model (more accurate but slower)
+                face_locations = face_recognition.face_locations(
+                    image_array, number_of_times_to_upsample=1, model='cnn'
+                )
+            
+            if not face_locations:
+                return None
             
             # Get face encodings
             face_encodings = face_recognition.face_encodings(image_array, face_locations)
@@ -93,7 +100,6 @@ class FaceRecognitionService:
             
             return None
         except Exception as e:
-            print(f"Error extracting face encoding: {e}")
             return None
     
     def find_face_locations(self, image_array: np.ndarray) -> List[Tuple]:

@@ -17,7 +17,8 @@ class User:
     
     def __init__(self, user_id: int = None, name: str = '', phone: str = '', 
                  gender: str = '', company: str = '', department: str = '', 
-                 position: str = '', seat_number: str = '', images: List[str] = None):
+                 position: str = '', seat_number: str = '', images: List[str] = None,
+                 email: str = '', avatar: str = '', notes: str = ''):
         self.id = user_id
         self.name = name
         self.phone = phone
@@ -27,6 +28,9 @@ class User:
         self.position = position
         self.seat_number = seat_number
         self.images = images or []
+        self.email = email
+        self.avatar = avatar
+        self.notes = notes
         self.created_at = datetime.utcnow().isoformat() + 'Z'
     
     def to_dict(self) -> Dict[str, Any]:
@@ -41,6 +45,9 @@ class User:
             'position': self.position,
             'seat_number': self.seat_number,
             'images': self.images,
+            'email': self.email,
+            'avatar': self.avatar,
+            'notes': self.notes,
             'created_at': self.created_at
         }
     
@@ -57,6 +64,9 @@ class User:
         user.position = data.get('position', '')
         user.seat_number = data.get('seat_number', '')
         user.images = data.get('images', [])
+        user.email = data.get('email', '')
+        user.avatar = data.get('avatar', '')
+        user.notes = data.get('notes', '')
         user.created_at = data.get('created_at', '')
         return user
     

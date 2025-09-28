@@ -36,6 +36,10 @@ class CacheService:
                     encodings = []
                     for image_path in user.images:
                         try:
+                            # Convert relative path to absolute path
+                            if not os.path.isabs(image_path):
+                                image_path = os.path.join(os.getcwd(), image_path)
+                            
                             # Load and process image
                             if os.path.exists(image_path):
                                 with open(image_path, 'rb') as f:
@@ -112,15 +116,50 @@ class CacheService:
             candidate = self.centroid_cache[i1]
             
             # Check strict criteria
-            tolerance = 0.53  # From config
-            top2_gap_min = 0.07  # From config
+            from app.config import Config
+            tolerance = Config.FACE_RECOGNITION_TOLERANCE
+            top2_gap_min = Config.FACE_RECOGNITION_TOP2_GAP_MIN
             accepted = (d1 <= tolerance) and ((d2 - d1) >= top2_gap_min)
             
             if accepted:
                 return True, candidate['id'], candidate['name'], candidate.get('gender', ''), d1, d2
             else:
-                return False, None, None, None, d1, d2
+                # Fallback: try individual encoding matching if centroid fails
+                return self._fallback_match(query_encoding, d1, d2)
                 
         except Exception as e:
             print(f"Error in face matching: {e}")
             return False, None, None, None, None, None
+    
+    def _fallback_match(self, query_encoding: np.ndarray, d1: float, d2: float) -> tuple:
+        """Fallback matching using individual encodings"""
+        try:
+            best_distance = 1e9
+            best_match = None
+            
+            for entry in self.encoding_cache:
+                encodings = entry.get('encodings', [])
+                if not encodings:
+                    continue
+                
+                # Calculate distances to all encodings of this user
+                distances = face_recognition.face_distance(
+                    np.asarray(encodings, dtype=np.float32), 
+                    np.asarray(query_encoding, dtype=np.float32)
+                )
+                
+                min_distance = float(np.min(distances))
+                if min_distance < best_distance:
+                    best_distance = min_distance
+                    best_match = entry
+            
+            # Use more lenient tolerance for fallback
+            fallback_tolerance = 0.65
+            if best_match and best_distance <= fallback_tolerance:
+                return True, best_match['id'], best_match['name'], '', best_distance, d2
+            
+            return False, None, None, None, d1, d2
+            
+        except Exception as e:
+            print(f"Error in fallback matching: {e}")
+            return False, None, None, None, d1, d2
