@@ -1,8 +1,12 @@
 """
 Checkin controller for face recognition system
 """
-from flask import Blueprint, request, jsonify
-from datetime import datetime
+from flask import Blueprint, request, jsonify, send_from_directory, send_file
+from datetime import datetime, timedelta
+import csv
+import io
+import os
+from typing import List, Dict, Any, Optional, Tuple
 from app.models.checkin import Checkin
 from app.models.user import User
 from app.utils.helpers import sanitize_text, normalize_phone
@@ -62,10 +66,175 @@ def checkin_user(user_id):
 
 @checkin_bp.route('/api/checkins', methods=['GET'])
 def get_checkins():
-    """Get all checkins"""
+    """List checkins with filters, sorting, pagination, stats and meta as contract"""
     try:
-        checkins = Checkin.load_all()
-        return jsonify([checkin.to_dict() for checkin in checkins])
+        # Query params
+        search = request.args.get('search')
+        status = request.args.get('status', 'all')
+        date_from = request.args.get('dateFrom')
+        date_to = request.args.get('dateTo')
+        sort_by = request.args.get('sortBy', 'checkinTime')
+        sort_order = request.args.get('sortOrder', 'desc')
+        include_stats = request.args.get('includeStats', 'false').lower() == 'true'
+
+        # Pagination params with validation
+        try:
+            page = int(request.args.get('page', '1'))
+        except ValueError:
+            page = 1
+        page = max(1, page)
+
+        try:
+            page_size = int(request.args.get('pageSize', '20'))
+        except ValueError:
+            page_size = 20
+        if page_size not in [10, 20, 50, 100]:
+            page_size = 20
+
+        # Load all
+        all_checkins = Checkin.load_all()
+
+        # Helper: map to contract item and derive status
+        def derive_status(method: Optional[str], confidence: Optional[float]) -> str:
+            if method == 'manual':
+                return 'manual'
+            if confidence is None:
+                return 'failed'
+            return 'success' if confidence >= 0.8 else 'failed'
+
+        def to_contract_item(c) -> Dict[str, Any]:
+            derived_status = derive_status(c.method, c.confidence)
+            return {
+                'id': str(c.id) if c.id is not None else '',
+                'delegateId': str(c.user_id) if c.user_id is not None else '',
+                'delegateName': c.name or '',
+                'organization': c.company or '',
+                'position': c.position or '',
+                'avatar': c.avatar or None,
+                'checkinTime': c.checked_at or '',
+                'confidence': float(c.confidence) if c.confidence is not None else None,
+                'status': derived_status,
+                'location': None,
+                'notes': c.notes or None
+            }
+
+        # Convert to dict list early for filtering/sorting
+        items: List[Dict[str, Any]] = [to_contract_item(c) for c in all_checkins]
+
+        # Date parsing helper
+        def parse_iso(ts: Optional[str]) -> Optional[datetime]:
+            if not ts:
+                return None
+            try:
+                # Accept strings like '2024-01-20T08:15:00Z' or ISO with Z
+                if ts.endswith('Z'):
+                    ts = ts[:-1] + '+00:00'
+                return datetime.fromisoformat(ts)
+            except Exception:
+                return None
+
+        # Apply filters
+        if search:
+            s = search.strip().lower()
+            items = [it for it in items if s in (it['delegateName'] or '').lower() or s in (it['organization'] or '').lower()]
+
+        if status in ['success', 'failed', 'manual']:
+            items = [it for it in items if it['status'] == status]
+
+        from_dt = parse_iso(date_from)
+        to_dt = parse_iso(date_to)
+        if from_dt or to_dt:
+            filtered: List[Dict[str, Any]] = []
+            for it in items:
+                ct = parse_iso(it['checkinTime'])
+                if ct is None:
+                    continue
+                ok = True
+                if from_dt and ct < from_dt:
+                    ok = False
+                if to_dt and ct > to_dt:
+                    ok = False
+                if ok:
+                    filtered.append(it)
+            items = filtered
+
+        # Sorting
+        sort_key = 'checkinTime'
+        if sort_by in ['checkinTime', 'confidence', 'delegateName']:
+            sort_key = sort_by
+
+        def sort_key_fn(it: Dict[str, Any]):
+            if sort_key == 'checkinTime':
+                ts = parse_iso(it['checkinTime'])
+                return ts or datetime.min
+            if sort_key == 'confidence':
+                return it['confidence'] if it['confidence'] is not None else -1.0
+            if sort_key == 'delegateName':
+                return (it['delegateName'] or '').lower()
+            return 0
+
+        reverse = (sort_order.lower() == 'desc')
+        items.sort(key=sort_key_fn, reverse=reverse)
+
+        # Stats (computed on filtered set before pagination)
+        total_items = len(items)
+        stats_obj: Optional[Dict[str, Any]] = None
+        if include_stats:
+            success_count = sum(1 for it in items if it['status'] == 'success')
+            failed_count = sum(1 for it in items if it['status'] == 'failed')
+            manual_count = sum(1 for it in items if it['status'] == 'manual')
+            unique_delegates = len({it['delegateId'] for it in items if it['delegateId']})
+            confidences = [it['confidence'] for it in items if isinstance(it['confidence'], (int, float))]
+            avg_conf = (sum(confidences) / len(confidences)) if confidences else 0.0
+            stats_obj = {
+                'total': total_items,
+                'success': success_count,
+                'failed': failed_count,
+                'manual': manual_count,
+                'uniqueDelegates': unique_delegates,
+                'avgConfidence': round(avg_conf, 6)
+            }
+
+        # Pagination
+        total_pages = (total_items + page_size - 1) // page_size if page_size else 1
+        if total_pages == 0:
+            total_pages = 1
+        if page > total_pages:
+            page = total_pages
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_items = items[start:end]
+
+        pagination_obj = {
+            'page': page,
+            'pageSize': page_size,
+            'totalItems': total_items,
+            'totalPages': total_pages,
+            'hasNext': page < total_pages,
+            'hasPrev': page > 1
+        }
+
+        # Meta
+        server_time = datetime.utcnow().isoformat() + 'Z'
+        meta_obj = {
+            'serverTime': server_time,
+            'filtersEcho': {
+                'search': search if search is not None else None,
+                'status': status if status in ['all', 'success', 'failed', 'manual'] else 'all',
+                'dateFrom': date_from if date_from else None,
+                'dateTo': date_to if date_to else None
+            }
+        }
+
+        response_obj = {
+            'items': page_items,
+            'pagination': pagination_obj,
+            'meta': meta_obj
+        }
+        if include_stats:
+            response_obj['stats'] = stats_obj
+
+        return jsonify(response_obj)
     except Exception as e:
         return jsonify({
             'success': False,
@@ -243,5 +412,192 @@ def search_users():
             'success': False,
             'error': {
                 'message': f'Lỗi tìm kiếm users: {str(e)}'
+            }
+        }), 500
+
+
+# --- Export endpoints ---
+
+def _filter_sort_items_for_export(args) -> List[Dict[str, Any]]:
+    """Reuse the same filtering/sorting logic as list endpoint for export (without pagination)."""
+    # We call the same sequence as in get_checkins, but encapsulated
+    search = args.get('search')
+    status = args.get('status', 'all')
+    date_from = args.get('dateFrom')
+    date_to = args.get('dateTo')
+    sort_by = args.get('sortBy', 'checkinTime')
+    sort_order = args.get('sortOrder', 'desc')
+
+    all_checkins = Checkin.load_all()
+
+    def derive_status(method: Optional[str], confidence: Optional[float]) -> str:
+        if method == 'manual':
+            return 'manual'
+        if confidence is None:
+            return 'failed'
+        return 'success' if confidence >= 0.8 else 'failed'
+
+    def to_contract_item(c) -> Dict[str, Any]:
+        derived_status = derive_status(c.method, c.confidence)
+        return {
+            'id': str(c.id) if c.id is not None else '',
+            'delegateId': str(c.user_id) if c.user_id is not None else '',
+            'delegateName': c.name or '',
+            'organization': c.company or '',
+            'position': c.position or '',
+            'avatar': c.avatar or None,
+            'checkinTime': c.checked_at or '',
+            'confidence': float(c.confidence) if c.confidence is not None else None,
+            'status': derived_status,
+            'location': None,
+            'notes': c.notes or None
+        }
+
+    items: List[Dict[str, Any]] = [to_contract_item(c) for c in all_checkins]
+
+    def parse_iso(ts: Optional[str]) -> Optional[datetime]:
+        if not ts:
+            return None
+        try:
+            if ts.endswith('Z'):
+                ts = ts[:-1] + '+00:00'
+            return datetime.fromisoformat(ts)
+        except Exception:
+            return None
+
+    if search:
+        s = search.strip().lower()
+        items = [it for it in items if s in (it['delegateName'] or '').lower() or s in (it['organization'] or '').lower()]
+
+    if status in ['success', 'failed', 'manual']:
+        items = [it for it in items if it['status'] == status]
+
+    from_dt = parse_iso(date_from)
+    to_dt = parse_iso(date_to)
+    if from_dt or to_dt:
+        filtered: List[Dict[str, Any]] = []
+        for it in items:
+            ct = parse_iso(it['checkinTime'])
+            if ct is None:
+                continue
+            ok = True
+            if from_dt and ct < from_dt:
+                ok = False
+            if to_dt and ct > to_dt:
+                ok = False
+            if ok:
+                filtered.append(it)
+        items = filtered
+
+    sort_key = 'checkinTime'
+    if sort_by in ['checkinTime', 'confidence', 'delegateName']:
+        sort_key = sort_by
+
+    def sort_key_fn(it: Dict[str, Any]):
+        if sort_key == 'checkinTime':
+            ts = parse_iso(it['checkinTime'])
+            return ts or datetime.min
+        if sort_key == 'confidence':
+            return it['confidence'] if it['confidence'] is not None else -1.0
+        if sort_key == 'delegateName':
+            return (it['delegateName'] or '').lower()
+        return 0
+
+    reverse = (sort_order.lower() == 'desc')
+    items.sort(key=sort_key_fn, reverse=reverse)
+    return items
+
+
+@checkin_bp.route('/api/checkins/export', methods=['GET'])
+def export_checkins():
+    """Export checkins as CSV or XLSX. Returns fileUrl, fileName, expiresAt."""
+    try:
+        export_format = request.args.get('format', 'csv').lower()
+        if export_format not in ['csv', 'xlsx']:
+            return jsonify({'error': 'Invalid format. Use csv|xlsx'}), 400
+
+        items = _filter_sort_items_for_export(request.args)
+
+        # Prepare export directory
+        from app.config import Config
+        export_dir = Config.DB_DIR / 'exports'
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        file_base = f"checkins_{timestamp}"
+        if export_format == 'csv':
+            filename = f"{file_base}.csv"
+            filepath = export_dir / filename
+            # Write CSV
+            with filepath.open('w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                # Header
+                writer.writerow([
+                    'id', 'delegateId', 'delegateName', 'organization', 'position',
+                    'avatar', 'checkinTime', 'confidence', 'status', 'location', 'notes'
+                ])
+                for it in items:
+                    writer.writerow([
+                        it['id'], it['delegateId'], it['delegateName'], it['organization'], it['position'],
+                        it['avatar'] or '', it['checkinTime'],
+                        '' if it['confidence'] is None else it['confidence'],
+                        it['status'], it['location'] or '', it['notes'] or ''
+                    ])
+        else:
+            # XLSX support only if openpyxl is available
+            try:
+                import openpyxl  # type: ignore
+                from openpyxl import Workbook  # type: ignore
+            except Exception:
+                return jsonify({'error': 'XLSX export requires openpyxl. Please install it or use CSV.'}), 400
+
+            filename = f"{file_base}.xlsx"
+            filepath = export_dir / filename
+            wb = Workbook()
+            ws = wb.active
+            ws.title = 'Checkins'
+            headers = ['id', 'delegateId', 'delegateName', 'organization', 'position', 'avatar', 'checkinTime', 'confidence', 'status', 'location', 'notes']
+            ws.append(headers)
+            for it in items:
+                ws.append([
+                    it['id'], it['delegateId'], it['delegateName'], it['organization'], it['position'],
+                    it['avatar'] or '', it['checkinTime'],
+                    '' if it['confidence'] is None else it['confidence'],
+                    it['status'], it['location'] or '', it['notes'] or ''
+                ])
+            wb.save(str(filepath))
+
+        # Provide simple file server URL
+        expires_at = (datetime.utcnow() + timedelta(hours=1)).isoformat() + 'Z'
+        file_url = f"/api/exports/{filename}"
+        return jsonify({
+            'fileUrl': file_url,
+            'fileName': filename,
+            'expiresAt': expires_at
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'message': f'Error exporting checkins: {str(e)}'
+            }
+        }), 500
+
+
+@checkin_bp.route('/api/exports/<path:filename>', methods=['GET'])
+def download_export(filename: str):
+    """Serve exported files from the exports directory."""
+    try:
+        from app.config import Config
+        export_dir = Config.DB_DIR / 'exports'
+        filepath = export_dir / filename
+        if not filepath.exists() or not filepath.is_file():
+            return jsonify({'error': 'File not found'}), 404
+        return send_file(str(filepath), as_attachment=True)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'message': f'Error downloading export: {str(e)}'
             }
         }), 500

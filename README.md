@@ -206,3 +206,35 @@ nhan_dang_khuon_mat/
 - **Response**: JSON với `{"recognized": boolean, "name": "string", "message": "string"}`
 
 ### POST `/api/tts`
+
+## Seed dữ liệu mẫu (users/checkins)
+
+Sử dụng seeder chạy bằng pytest để sinh dữ liệu mẫu vào `data/db/users.json` và `data/db/checkins.json`.
+
+### Cài pytest (nếu chưa có)
+
+```bash
+pip install pytest
+```
+
+### Chạy seed mặc định (20 users, 60 checkins)
+
+```bash
+pytest -q tests/test_seed_data.py::test_seed_users_and_checkins
+```
+
+### Chạy seed với số lượng mong muốn (ví dụ 700 users, 1500 checkins)
+
+```bash
+SEED_USERS_COUNT=700 SEED_CHECKINS_COUNT=1500 pytest -q tests/test_seed_data.py::test_seed_users_and_checkins
+```
+
+Ghi chú:
+- Mỗi lần chạy sẽ ghi đè `data/db/users.json` và `data/db/checkins.json`.
+- Tên người dùng là duy nhất (tổ hợp Họ × Đệm × Tên, không thêm số).
+- Số điện thoại tạo theo quy luật để tránh trùng lặp.
+- Muốn export XLSX từ API, cài thêm:
+
+```bash
+pip install openpyxl
+```
